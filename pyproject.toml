@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.2", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosam-backend"
+requires-python = ">=3.9.6"
+version = "0.1.0"
+maintainers = [
+  {name = "Giorgi Nozadze", email = "giorginozadze23@yahoo.com"}
+]
+description = "Back-end for myovision project"
+keywords = ["SAM", "Computer Vision", "Instance Segmentation", "Myotube", "Microscopy"]
+readme = "README.md"
+license = {file = "LICENSE"}
+
+[project.optional-dependencies]
+dev = ["mypy", "pre-commit", "ruff"]
+test = ["coverage", "pytest"]
+dependencies = [
+  "myovision-sam @ git+https://github.com/Noza23/myovision-sam.git",
+  "aioredis>=2.0.0"
+]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+exclude = ["docs*", "tests*", "snapshots*", "scripts*"]
+
+[tool.ruff]
+line-length = 79
