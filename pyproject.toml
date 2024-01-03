@@ -19,7 +19,7 @@ dev = ["mypy", "pre-commit", "ruff"]
 test = ["coverage", "pytest"]
 dependencies = [
   "myovision-sam @ git+https://github.com/Noza23/myovision-sam.git",
-  "aioredis>=2.0.0"
+  "redis>=5.0.0"
 ]
 
 [tool.setuptools]
