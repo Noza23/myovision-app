@@ -19,7 +19,7 @@ dev = ["mypy", "pre-commit", "ruff"]
 test = ["coverage", "pytest"]
 dependencies = [
   "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
-  "redis>=5.0.0"
+  "redis>=5.0.0",
   "hiredis>=2.3.2"
 ]
 
