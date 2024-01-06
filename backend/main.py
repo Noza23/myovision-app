@@ -11,7 +11,7 @@ from functools import lru_cache
 from .config import Settings
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
-pipeline: Pipeline = None  # type: ignore
+pipeline: Pipeline = None
 
 
 @asynccontextmanager
@@ -74,13 +74,6 @@ async def error_handler(request: Request, exc: Exception) -> Response:
     """Redirects request and exception to /error"""
     return Response(b"not found", status_code=404)
     # return RedirectResponse(url="/", status_code=404)
-
-
-@app.get("/configure")
-async def configure(request: Request) -> None:
-    request_data = await request.form()
-    settings.update_myosam_config(request_data.get("myosam_config"))
-    settings.update_measure_unit(request_data.get("measure_unit"))
 
 
 @app.get("/status")
