@@ -7,3 +7,22 @@ class Settings(BaseSettings):
     redis_url: str
     MYOSAM_MODEL: str
     STARDIST_MODEL: str
+
+
+class REDIS_KEYS:
+    """Methods to generate key names for Redis data."""
+
+    def __init__(self, prefix: str = "myo_sam"):
+        self.prefix = prefix
+
+    def myotube_key(self, hash_str: str) -> str:
+        """A key for myotube image."""
+        return f"{self.prefix}:myotube:{hash_str}"
+
+    def myotube_mask_key(self, hash_str: str) -> str:
+        """A key for myotube mask."""
+        return f"{self.prefix}:myotube_mask:{hash_str}"
+
+    def state_key(self, hash_str: str) -> str:
+        """A key for state."""
+        return f"{self.prefix}:state:{hash_str}"
