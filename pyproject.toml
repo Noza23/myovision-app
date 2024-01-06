@@ -18,7 +18,7 @@ license = {file = "LICENSE"}
 dev = ["mypy", "pre-commit", "ruff"]
 test = ["coverage", "pytest"]
 dependencies = [
-  "myovision-sam @ git+https://github.com/Noza23/myovision-sam.git",
+  "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
   "redis>=5.0.0"
 ]
 
