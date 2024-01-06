@@ -7,4 +7,3 @@ class Settings(BaseSettings):
     redis_url: str
     MYOSAM_MODEL: str
     STARDIST_MODEL: str
-    measure_unit: int
