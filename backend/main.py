@@ -13,6 +13,7 @@ from fastapi.responses import Response  # RedirectResponse
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
+from myo_sam.inference.models.information import InformationMetrics
 
 from functools import lru_cache
 
@@ -93,7 +94,9 @@ async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
         return {"status": False}
 
 
-@app.post("/run")  # response_model=RedirectResponse
+@app.post(
+    "/run", response_model=InformationMetrics
+)  # response_model=RedirectResponse
 async def run(
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
@@ -137,7 +140,13 @@ async def run(
             redis,
         )
 
-    return result.information_metrics.model_dump_json()
+    return result.information_metrics
+
+
+@app.get("/adjust_unit", response_model=InformationMetrics)
+def adjust_unit(metrics: InformationMetrics, mu: float):
+    """Adjust unit of the metrics"""
+    return metrics.adjust_measure_unit(mu)
 
 
 @app.exception_handler(404)
