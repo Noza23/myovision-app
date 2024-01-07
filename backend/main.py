@@ -87,22 +87,6 @@ async def clear_cache(redis: aioredis.Redis, key: str) -> None:
     await redis.delete(key)
 
 
-@app.get("/")
-def root(request: Request):
-    return {"message": "Hello World"}
-
-
-@app.get("/status/")
-async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
-    """check status of the redis connection"""
-    try:
-        status = await redis.ping()
-        return {"status": status}
-    except Exception as e:
-        print(f"Failed establishing connection to redis: {e}")
-        return {"status": False}
-
-
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
     background_tasks: BackgroundTasks,
@@ -148,6 +132,17 @@ async def run(
         )
 
     return result.information_metrics
+
+
+@app.get("/status/")
+async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
+    """check status of the redis connection"""
+    try:
+        status = await redis.ping()
+        return {"status": status}
+    except Exception as e:
+        print(f"Failed establishing connection to redis: {e}")
+        return {"status": False}
 
 
 @app.get("/adjust_unit/", response_model=InformationMetrics)
