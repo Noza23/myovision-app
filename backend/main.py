@@ -1,14 +1,22 @@
 from contextlib import asynccontextmanager
 from typing import Annotated
-from fastapi import FastAPI, BackgroundTasks, Request, WebSocket, Depends
-from fastapi.responses import Response
+from fastapi import (
+    FastAPI,
+    Depends,
+    BackgroundTasks,
+    Request,
+    UploadFile,
+    File,
+)
+
+from fastapi.responses import Response  # RedirectResponse
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
 
 from functools import lru_cache
 
-from .config import Settings, REDIS_KEYS
+from .models import Settings, REDIS_KEYS
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
@@ -21,20 +29,21 @@ async def lifespan(app: FastAPI):
     print("Starting application")
     # Redis connection
     print("Connecting to redis")
-    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    # redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     # Loading models
     print("Loading models")
+    global pipeline
     pipeline = Pipeline()
-    pipeline._stardist_predictor.set_model(settings.STARDIST_MODEL)
-    pipeline._myosam_predictor.set_model(settings.MYOSAM_MODEL)
+    # pipeline._stardist_predictor.set_model(settings.STARDIST_MODEL)
+    # pipeline._myosam_predictor.set_model(settings.MYOSAM_MODEL)
     yield
     # Clean up and closing redis
     del pipeline
-    await redis.close()
+    # await redis.close()
     print("Stopping application")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)  # lifespan=lifespan
 
 
 def get_pipeline_instance() -> Pipeline:
@@ -47,23 +56,13 @@ async def setup_redis() -> aioredis.Redis:
     """Redis connection is single and shared across all users."""
     try:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-        redis.config_set("appendonly", "yes")
     except Exception as e:
         print(f"Failed establishing connection to redis: {e}")
     return redis
 
 
-async def return_redis_status(redis: aioredis.Redis) -> bool:
-    try:
-        status = await redis.ping()
-        return status
-    except Exception as e:
-        print(f"Failed establishing connection to redis: {e}")
-        return False
-
-
 async def set_cache(key: str, value: str, redis: aioredis.Redis) -> None:
-    """cache single item for 1 hour"""
+    """cache single item"""
     await redis.set(key, value)
     await redis.bgsave()
 
@@ -83,30 +82,62 @@ def root(request: Request):
     return {"message": "Hello World"}
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    pass
-
-
 @app.get("/status")
-async def status(
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
-):
-    # Check if redis is up
-    status = await return_redis_status(redis)
-    return {"status": status}
+async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
+    """check status of the redis connection"""
+    try:
+        status = await redis.ping()
+        return {"status": status}
+    except Exception as e:
+        print(f"Failed establishing connection to redis: {e}")
+        return {"status": False}
 
 
-@app.get("/run")
+@app.post("/run")  # response_model=RedirectResponse
 async def run(
-    data: dict,
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
+    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
+    myotube: UploadFile = File(None),
+    nuclei: UploadFile = File(None),
 ):
-    # Run the pipeline
-    # cache results in redis
+    """Run the pipeline"""
+    myo_cache, nucl_cache = None, None
 
-    return {"message": "Hello World"}
+    if myotube.filename:
+        pipeline.set_nuclei_image(await myotube.read())
+        if await is_cached(keys.myotube_key(pipeline.myotube_hash), redis):
+            myo_cache = await redis.get(
+                keys.myotube_key(pipeline.myotube_hash)
+            )
+
+    if nuclei.filename:
+        pipeline.set_myotube_image(await nuclei.read())
+        if await is_cached(keys.nuclei_key(pipeline.nuclei_hash), redis):
+            nucl_cache = await redis.get(keys.nuclei_key(pipeline.nuclei_hash))
+
+    result = pipeline.execute(
+        myotubes_cached=myo_cache, nucleis_cached=nucl_cache
+    )
+
+    if pipeline.myotube_image:
+        background_tasks.add_task(
+            set_cache,
+            keys.myotube_key(pipeline.myotube_hash),
+            result.information_metrics.myotubes.model_dump_json(),
+            redis,
+        )
+
+    if pipeline.nuclei_image:
+        background_tasks.add_task(
+            set_cache,
+            keys.nuclei_key(pipeline.nuclei_hash),
+            result.information_metrics.nucleis.model_dump_json(),
+            redis,
+        )
+
+    return result.information_metrics.model_dump_json()
 
 
 @app.exception_handler(404)

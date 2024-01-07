@@ -19,9 +19,9 @@ class REDIS_KEYS:
         """A key for myotube image."""
         return f"{self.prefix}:myotube:{hash_str}"
 
-    def myotube_mask_key(self, hash_str: str) -> str:
+    def nuclei_key(self, hash_str: str) -> str:
         """A key for myotube mask."""
-        return f"{self.prefix}:myotube_mask:{hash_str}"
+        return f"{self.prefix}:nuclei:{hash_str}"
 
     def state_key(self, hash_str: str) -> str:
         """A key for state."""
