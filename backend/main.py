@@ -8,8 +8,8 @@ from fastapi import (
     UploadFile,
     File,
 )
-
-from fastapi.responses import Response  # RedirectResponse
+from fastapi.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
@@ -22,6 +22,7 @@ from .models import Settings, REDIS_KEYS
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
 redis_keys = REDIS_KEYS(prefix="myo_sam")
+origins = ["http://localhost:3000"]
 
 
 @asynccontextmanager
@@ -44,7 +45,15 @@ async def lifespan(app: FastAPI):
     print("Stopping application")
 
 
-app = FastAPI(lifespan=lifespan)  # lifespan=lifespan
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_pipeline_instance() -> Pipeline:
@@ -83,7 +92,7 @@ def root(request: Request):
     return {"message": "Hello World"}
 
 
-@app.get("/status")
+@app.get("/status/")
 async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
     """check status of the redis connection"""
     try:
@@ -94,9 +103,7 @@ async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
         return {"status": False}
 
 
-@app.post(
-    "/run", response_model=InformationMetrics
-)  # response_model=RedirectResponse
+@app.post("/run/", response_model=InformationMetrics)
 async def run(
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
@@ -143,7 +150,7 @@ async def run(
     return result.information_metrics
 
 
-@app.get("/adjust_unit", response_model=InformationMetrics)
+@app.get("/adjust_unit/", response_model=InformationMetrics)
 def adjust_unit(metrics: InformationMetrics, mu: float):
     """Adjust unit of the metrics"""
     return metrics.adjust_measure_unit(mu)
