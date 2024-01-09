@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
     print("Loading models")
     global pipeline
     pipeline = Pipeline()
-    # pipeline._stardist_predictor.set_model(settings.STARDIST_MODEL)
-    # pipeline._myosam_predictor.set_model(settings.MYOSAM_MODEL)
+    # pipeline._stardist_predictor.set_model(settings.stardist_model)
+    # pipeline._myosam_predictor.set_model(settings.myosam_model)
     yield
     # Clean up and closing redis
     del pipeline
@@ -87,6 +87,12 @@ async def clear_cache(redis: aioredis.Redis, key: str) -> None:
     await redis.delete(key)
 
 
+@app.get("/get_config/")
+async def get_config():
+    """Get the configuration of the pipeline."""
+    return pipeline._myosam_predictor.amg_config.model_dump_json()
+
+
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
     background_tasks: BackgroundTasks,
@@ -130,7 +136,6 @@ async def run(
             result.information_metrics.nucleis.model_dump_json(),
             redis,
         )
-
     return result.information_metrics
 
 

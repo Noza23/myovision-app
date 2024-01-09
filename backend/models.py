@@ -1,12 +1,18 @@
 from pydantic_settings import BaseSettings
+from enum import Enum
 
 
 class Settings(BaseSettings):
     """App confiuration."""
 
     redis_url: str
-    MYOSAM_MODEL: str
-    STARDIST_MODEL: str
+    myosam_model: str
+    stardist_model: str
+
+
+class ENDPOINTS(str, Enum):
+    VALIDATION = "validation"
+    INFERENCE = "inference"
 
 
 class REDIS_KEYS:
