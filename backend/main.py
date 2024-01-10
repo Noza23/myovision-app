@@ -68,13 +68,13 @@ async def get_config():
 async def run(
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
-    form: AmgConfig = Depends(),
+    config: AmgConfig = Depends(),
 ):
     if myotube:
         print("myotube: ", myotube.filename)
     if nuclei:
         print("nuclei: ", nuclei.filename)
-    print("form: ", form.model_dump_json())
+    print("form: ", config.model_dump_json())
     info = InformationMetrics.model_validate(
         json.load(open("data/info_data.json"))
     )
