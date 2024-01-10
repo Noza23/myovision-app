@@ -106,20 +106,18 @@ async def run(
     myo_cache, nucl_cache = None, None
 
     if myotube.filename:
-        pipeline.set_nuclei_image(await myotube.read())
+        pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
         if await is_cached(keys.myotube_key(pipeline.myotube_hash), redis):
             myo_cache = await redis.get(
                 keys.myotube_key(pipeline.myotube_hash)
             )
 
     if nuclei.filename:
-        pipeline.set_myotube_image(await nuclei.read())
+        pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
         if await is_cached(keys.nuclei_key(pipeline.nuclei_hash), redis):
             nucl_cache = await redis.get(keys.nuclei_key(pipeline.nuclei_hash))
 
-    result = pipeline.execute(
-        myotubes_cached=myo_cache, nucleis_cached=nucl_cache
-    )
+    result = pipeline.execute(myo_cache, nucl_cache)
 
     if pipeline.myotube_image:
         background_tasks.add_task(

@@ -18,7 +18,7 @@ class ENDPOINTS(str, Enum):
 class REDIS_KEYS:
     """Methods to generate key names for Redis data."""
 
-    def __init__(self, prefix: str = "myo_sam"):
+    def __init__(self, prefix: str = "myovision"):
         self.prefix = prefix
 
     def myotube_key(self, hash_str: str) -> str:
