@@ -13,15 +13,16 @@ description = "Back-end for myovision project"
 keywords = ["SAM", "Computer Vision", "Instance Segmentation", "Myotube", "Microscopy"]
 readme = "README.md"
 license = {file = "LICENSE"}
-
-[project.optional-dependencies]
-dev = ["mypy", "pre-commit", "ruff"]
-test = ["coverage", "pytest"]
 dependencies = [
   "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
   "redis>=5.0.0",
   "hiredis>=2.3.2",
 ]
+
+[project.optional-dependencies]
+dev = ["mypy", "pre-commit", "ruff"]
+test = ["coverage", "pytest"]
+
 
 [tool.setuptools]
 include-package-data = false
