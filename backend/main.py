@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
+from myo_sam.inference.predictors.config import AmgConfig
 from myo_sam.inference.models.information import InformationMetrics
 
 from functools import lru_cache
@@ -87,10 +88,10 @@ async def clear_cache(redis: aioredis.Redis, key: str) -> None:
     await redis.delete(key)
 
 
-@app.get("/get_config/")
+@app.get("/get_config/", response_model=AmgConfig)
 async def get_config():
     """Get the configuration of the pipeline."""
-    return pipeline._myosam_predictor.amg_config.model_dump_json()
+    return pipeline._myosam_predictor.amg_config
 
 
 @app.post("/run/", response_model=InformationMetrics)
@@ -101,6 +102,7 @@ async def run(
     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
+    config: AmgConfig = Depends(),
 ):
     """Run the pipeline"""
     myo_cache, nucl_cache = None, None
@@ -117,6 +119,7 @@ async def run(
         if await is_cached(keys.nuclei_key(pipeline.nuclei_hash), redis):
             nucl_cache = await redis.get(keys.nuclei_key(pipeline.nuclei_hash))
 
+    pipeline._myosam_predictor.update_amg_config(config.model_dump())
     result = pipeline.execute(myo_cache, nucl_cache)
 
     if pipeline.myotube_image:
@@ -137,7 +140,7 @@ async def run(
     return result.information_metrics
 
 
-@app.get("/status/")
+@app.get("/redis_status/")
 async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
     """check status of the redis connection"""
     try:
