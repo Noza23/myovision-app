@@ -21,7 +21,7 @@ from .models import Settings, REDIS_KEYS
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
-redis_keys = REDIS_KEYS(prefix="myo_sam")
+redis_keys = REDIS_KEYS(prefix="myovision")
 origins = ["http://localhost:3000"]
 
 
