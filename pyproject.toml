@@ -10,6 +10,9 @@ maintainers = [
   {name = "Giorgi Nozadze", email = "giorginozadze23@yahoo.com"}
 ]
 description = "Back-end for myovision project"
+dependencies = [
+  "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
+]
 keywords = ["SAM", "Computer Vision", "Instance Segmentation", "Myotube", "Microscopy"]
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -17,9 +20,6 @@ license = {file = "LICENSE"}
 [project.optional-dependencies]
 dev = ["mypy", "pre-commit", "ruff"]
 test = ["coverage", "pytest"]
-dependencies = [
-  "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
-]
 
 [tool.setuptools]
 include-package-data = false
