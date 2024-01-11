@@ -7,12 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.predictors.config import AmgConfig
 from myo_sam.inference.models.information import InformationMetrics
 
 # from functools import lru_cache
 
-from .models import Settings, REDIS_KEYS
+from .models import Settings, REDIS_KEYS, Config
 import json
 import random
 
@@ -58,17 +57,20 @@ def get_pipeline_instance() -> Pipeline:
     return pipeline.model_copy()
 
 
-@app.get("/get_config/", response_model=AmgConfig)
+@app.get("/get_config/", response_model=Config)
 async def get_config():
     """Get the configuration of the pipeline."""
-    return pipeline._myosam_predictor.amg_config
+    return Config(
+        amg_config=pipeline._myosam_predictor.amg_config,
+        measure_unit=pipeline.measure_unit,
+    )
 
 
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
-    config: AmgConfig = Depends(),
+    config: Config = Depends(),
 ):
     if myotube:
         print("myotube: ", myotube.filename)

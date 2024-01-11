@@ -1,5 +1,14 @@
 from pydantic_settings import BaseSettings
+from pydantic import BaseModel
 from enum import Enum
+from myo_sam.inference.predictors.config import AmgConfig
+
+
+class Config(BaseModel):
+    """Configuration for the pipeline."""
+
+    amg_config: AmgConfig
+    measure_unit: float
 
 
 class Settings(BaseSettings):
