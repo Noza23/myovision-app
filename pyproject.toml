@@ -11,7 +11,7 @@ maintainers = [
 ]
 description = "Back-end for myovision project"
 dependencies = [
-  "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
+  "myo_sam @ git+https://github.com/Noza23/myovision-sam.git@9-inference-pipeline",
 ]
 keywords = ["SAM", "Computer Vision", "Instance Segmentation", "Myotube", "Microscopy"]
 readme = "README.md"
