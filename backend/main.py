@@ -98,13 +98,13 @@ async def get_config():
 
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
+    config: Config,
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
-    config: Config = Depends(),
 ):
     """Run the pipeline"""
     myo_cache, nucl_cache = None, None

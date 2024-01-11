@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
 from enum import Enum
+import json
+
 from myo_sam.inference.predictors.config import AmgConfig
 
 
@@ -9,6 +12,13 @@ class Config(BaseModel):
 
     amg_config: AmgConfig
     measure_unit: float
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_to_json(cls, value):
+        if isinstance(value, str):
+            return cls(**json.loads(value))
+        return value
 
 
 class Settings(BaseSettings):
