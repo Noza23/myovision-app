@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 # from typing import Annotated
-from fastapi import FastAPI, Request, UploadFile, File, Depends
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 # from redis import asyncio as aioredis  # type: ignore
@@ -68,9 +68,9 @@ async def get_config():
 
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
+    config: Config,
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
-    config: Config = Depends(),
 ):
     if myotube:
         print("myotube: ", myotube.filename)
@@ -82,7 +82,6 @@ async def run(
     )
     info.myotubes = info.myotubes[:2]
     info.nucleis = info.nucleis[:2]
-    info.nuclei_clusters = info.nuclei_clusters[:2]
     return info
 
 
