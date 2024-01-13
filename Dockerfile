@@ -6,5 +6,6 @@ RUN apt-get update
 WORKDIR /app
 COPY . /app
 RUN pip install 'git+https://${TOKEN}@github.com/Noza23/myovision-sam.git@9-inference-pipeline'
+RUN pip install fastapi[all]
 
 CMD ["uvicorn", "backend.main:app", "--reload", "--port", "8000"]
