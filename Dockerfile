@@ -5,4 +5,4 @@ WORKDIR /app
 COPY . /app
 RUN pip install .
 
-CMD ["uvicorn", "backend.main:app", "--reload", "--host", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--reload", "--port", "8000"]
