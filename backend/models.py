@@ -48,6 +48,10 @@ class REDIS_KEYS:
         """A key for myotube mask."""
         return f"{self.prefix}:nuclei:{hash_str}"
 
+    def image_path_key(self, hash_str: str) -> str:
+        """A key for image path."""
+        return f"{self.prefix}:image_path:{hash_str}"
+
     def state_key(self, hash_str: str) -> str:
         """A key for state."""
         return f"{self.prefix}:state:{hash_str}"
