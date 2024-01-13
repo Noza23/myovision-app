@@ -37,11 +37,18 @@ class ENDPOINTS(str, Enum):
     INFERENCE = "inference"
 
 
+class State(BaseModel):
+    """Validation state."""
+
+    valid: list[int] = Field(description="valid contours.", default=[])
+    invalid: list[int] = Field(description="invalid contours.", default=[])
+
+
 class ValidationResponse(BaseModel):
     """Validation response."""
 
     roi_coords: list[list[int]] = Field(description="Contours of the ROI.")
-    state: dict[str, list[int]] = Field(description="validation state.")
+    state: State = Field(description="validation state.")
     hash_str: str = Field(description="The hash string of the image.")
 
 

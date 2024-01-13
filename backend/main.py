@@ -23,9 +23,10 @@ from .models import (
     Settings,
     REDIS_KEYS,
     Config,
+    State,
     ValidationResponse,
 )
-# from .utils import get_fn
+from .utils import get_fp
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
@@ -79,9 +80,9 @@ async def setup_redis() -> aioredis.Redis:
     return redis
 
 
-async def set_cache(key: str, value: str, redis: aioredis.Redis) -> None:
-    """cache single item"""
-    await redis.set(key, value)
+async def set_cache(mapping: dict[str, str], redis: aioredis.Redis) -> None:
+    """cache multiple items"""
+    await redis.mset(mapping)
     await redis.bgsave()
 
 
@@ -117,10 +118,28 @@ async def run_validation(
     pipeline.set_myotube_image(await image.read(), image.filename)
     if await is_cached(keys.image_path_key(pipeline.myotube_hash), redis):
         img_cache = await redis.get(keys.image_path_key(pipeline.myotube_hash))
-        img_path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
-
-    if not img_path:
-        pass
+        if img_cache:
+            state = await redis.get(keys.state_key(pipeline.myotube_hash))
+            path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
+            if not path:
+                path = get_fp(settings.images_dir)
+                pipeline.save_myotube_image(path)
+                background_tasks.add_task(
+                    set_cache,
+                    keys.image_path_key(pipeline.myotube_hash),
+                    path,
+                    redis,
+                )
+        else:
+            state = State().model_dump_json()
+            path = get_fp(settings.images_dir)
+            pipeline.save_myotube_image(path)
+            background_tasks.add_task(
+                set_cache,
+                keys.image_path_key(pipeline.myotube_hash),
+                path,
+                redis,
+            )
 
     # pipeline._myosam_predictor.update_amg_config(
     #     config.amg_config.model_dump()
@@ -134,7 +153,7 @@ async def run_validation(
     #     result.state,
     #     redis,
     # )
-    return img_cache
+    return img_cache, state
 
 
 @app.post("/run/", response_model=InformationMetrics)
