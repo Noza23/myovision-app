@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings
 from pydantic import BaseModel, model_validator, Field
 
 from enum import Enum
-from typing import Union
 import json
 
 from myo_sam.inference.models.information import InformationMetrics
@@ -51,23 +50,20 @@ class State(BaseModel):
 class ValidationResponse(BaseModel):
     """Validation response."""
 
-    roi_coords: list[list[list[int]]] = Field(
-        description="Myoobjects containing ROIs."
-    )
+    roi_coords: list[list[list[int]]] = Field(description="ROI coords.")
     state: State = Field(description="validation state.")
-    hash_str: str = Field(description="The hash string of the image.")
+    image_hash: str = Field(description="The hash string of the image.")
+    image_path: str = Field(description="The path of the image.")
 
 
 class InferenceResponse(BaseModel):
     """Inference response."""
 
     information_data: InformationMetrics
-    hash_str_myotube: Union[str, None] = Field(
-        description="The hash string of the myotube image."
-    )
-    hash_str_nuclei: Union[str, None] = Field(
-        description="The hash string of the nuclei image."
-    )
+    myotube_hash: str = Field(description="The hash string of the image.")
+    myotube_image_path: str = Field(description="The path of the image.")
+    nuclei_hash: str = Field(description="The hash string of the image.")
+    nuclei_image_path: str = Field(description="The path of the image.")
 
 
 class REDIS_KEYS:

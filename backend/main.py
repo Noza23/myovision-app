@@ -103,7 +103,7 @@ async def get_config():
     return Config()
 
 
-@app.post("/run/validation/", response_model=ValidationResponse)
+@app.post("/validation/", response_model=ValidationResponse)
 async def run_validation(
     image: UploadFile,
     config: Config,
@@ -151,6 +151,10 @@ async def run_validation(
             redis,
         )
         # Run pipeline
+        pipeline._myosam_predictor.update_amg_config(
+            config.amg_config.model_dump()
+        )
+        # background_tasks.add_task(pipeline.execute)
         myos = pipeline.execute().information_metrics.myotubes.myo_objects
 
     return ValidationResponse(
@@ -160,51 +164,69 @@ async def run_validation(
     )
 
 
-@app.post("/run/", response_model=InformationMetrics)
-async def run(
-    config: Config,
-    background_tasks: BackgroundTasks,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
-    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
+@app.post("/inference/", response_model=InformationMetrics)
+async def run_inference(
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
+    config: Config = Depends(get_config),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    redis: Annotated[aioredis.Redis, Depends(setup_redis)] = Depends(
+        setup_redis
+    ),
+    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)] = Depends(
+        get_pipeline_instance
+    ),
+    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)] = Depends(REDIS_KEYS),
 ):
-    """Run the pipeline"""
-    myo_cache, nucl_cache = None, None
+    """Run the pipeline in inference mode."""
+    pass
 
-    if myotube.filename:
-        pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
-        if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
-            myo_cache = await redis.get(keys.result_key(pipeline.myotube_hash))
 
-    if nuclei.filename:
-        pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
-        if await is_cached(keys.result_key(pipeline.nuclei_hash), redis):
-            nucl_cache = await redis.get(keys.result_key(pipeline.nuclei_hash))
+# @app.post("/run/", response_model=InformationMetrics)
+# async def run(
+#     config: Config,
+#     background_tasks: BackgroundTasks,
+#     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+#     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
+#     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
+#     myotube: UploadFile = File(None),
+#     nuclei: UploadFile = File(None),
+# ):
+#     """Run the pipeline"""
+#     myo_cache, nucl_cache = None, None
 
-    pipeline._myosam_predictor.update_amg_config(
-        config.amg_config.model_dump()
-    )
-    pipeline.set_measure_unit(config.measure_unit)
-    result = pipeline.execute(myo_cache, nucl_cache)
+#     if myotube.filename:
+#         pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
+#         if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
+#             myo_cache = await redis.get(keys.result_key(pipeline.myotube_hash))
 
-    if pipeline.myotube_image:
-        background_tasks.add_task(
-            set_cache,
-            keys.result_key(pipeline.myotube_hash),
-            result.information_metrics.myotubes.model_dump_json(),
-            redis,
-        )
+#     if nuclei.filename:
+#         pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
+#         if await is_cached(keys.result_key(pipeline.nuclei_hash), redis):
+#             nucl_cache = await redis.get(keys.result_key(pipeline.nuclei_hash))
 
-    if pipeline.nuclei_image:
-        background_tasks.add_task(
-            set_cache,
-            keys.result_key(pipeline.nuclei_hash),
-            result.information_metrics.nucleis.model_dump_json(),
-            redis,
-        )
-    return result.information_metrics
+#     pipeline._myosam_predictor.update_amg_config(
+#         config.amg_config.model_dump()
+#     )
+#     pipeline.set_measure_unit(config.measure_unit)
+#     result = pipeline.execute(myo_cache, nucl_cache)
+
+#     if pipeline.myotube_image:
+#         background_tasks.add_task(
+#             set_cache,
+#             keys.result_key(pipeline.myotube_hash),
+#             result.information_metrics.myotubes.model_dump_json(),
+#             redis,
+#         )
+
+#     if pipeline.nuclei_image:
+#         background_tasks.add_task(
+#             set_cache,
+#             keys.result_key(pipeline.nuclei_hash),
+#             result.information_metrics.nucleis.model_dump_json(),
+#             redis,
+#         )
+#     return result.information_metrics
 
 
 @app.get("/redis_status/")
