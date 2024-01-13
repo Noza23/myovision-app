@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     redis_url: str
     myosam_model: str
     stardist_model: str
+    images_dir: str
 
 
 class ENDPOINTS(str, Enum):
