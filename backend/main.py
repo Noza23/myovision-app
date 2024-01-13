@@ -6,8 +6,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 # from redis import asyncio as aioredis  # type: ignore
 
-from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.information import InformationMetrics
+# from myo_sam.inference.pipeline import Pipeline
+from .information import InformationMetrics
+# from myo_sam.inference.models.information import InformationMetrics
 
 # from functools import lru_cache
 
@@ -16,7 +17,7 @@ import json
 import random
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
-pipeline: Pipeline = None
+# pipeline: Pipeline = None
 redis_keys = REDIS_KEYS(prefix="myovision")
 origins = ["http://localhost:3000"]
 
@@ -30,13 +31,13 @@ async def lifespan(app: FastAPI):
     # redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     # Loading models
     print("Loading models")
-    global pipeline
-    pipeline = Pipeline()
+    # global pipeline
+    # pipeline = Pipeline()
     # pipeline._stardist_predictor.set_model(settings.stardist_model)
     # pipeline._myosam_predictor.set_model(settings.myosam_model)
     yield
     # Clean up and closing redis
-    del pipeline
+    # del pipeline
     # await redis.close()
     print("Stopping application")
 
@@ -45,25 +46,22 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def get_pipeline_instance() -> Pipeline:
-    """Each user gets new pipeline instance, where models are shared."""
-    return pipeline.model_copy()
+# def get_pipeline_instance() -> Pipeline:
+#     """Each user gets new pipeline instance, where models are shared."""
+#     return pipeline.model_copy()
 
 
 @app.get("/get_config/", response_model=Config)
 async def get_config():
     """Get the configuration of the pipeline."""
-    return Config(
-        amg_config=pipeline._myosam_predictor.amg_config,
-        measure_unit=pipeline.measure_unit,
-    )
+    return Config(measure_unit=1.0)
 
 
 @app.post("/run/", response_model=InformationMetrics)

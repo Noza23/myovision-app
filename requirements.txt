@@ -1,0 +1,4 @@
+fastapi[all]
+numpy
+opencv-python-headless
+networkx
