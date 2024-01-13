@@ -27,6 +27,7 @@ from .models import (
     ValidationResponse,
 )
 from .utils import get_fp
+import json
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
@@ -99,10 +100,7 @@ async def clear_cache(redis: aioredis.Redis, key: str) -> None:
 @app.get("/get_config/", response_model=Config)
 async def get_config():
     """Get the configuration of the pipeline."""
-    return Config(
-        amg_config=pipeline._myosam_predictor.amg_config,
-        measure_unit=pipeline._myosam_predictor.measure_unit,
-    )
+    return Config()
 
 
 @app.post("/run/validation/", response_model=ValidationResponse)
@@ -115,45 +113,51 @@ async def run_validation(
     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
 ):
     """Run the pipeline in validation mode."""
+    # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
-    if await is_cached(keys.image_path_key(pipeline.myotube_hash), redis):
-        img_cache = await redis.get(keys.image_path_key(pipeline.myotube_hash))
-        if img_cache:
-            state = await redis.get(keys.state_key(pipeline.myotube_hash))
-            path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
-            if not path:
-                path = get_fp(settings.images_dir)
-                pipeline.save_myotube_image(path)
-                background_tasks.add_task(
-                    set_cache,
-                    keys.image_path_key(pipeline.myotube_hash),
-                    path,
-                    redis,
-                )
-        else:
-            state = State().model_dump_json()
+
+    if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
+        # Case when image is cached
+        myos = json.loads(
+            await redis.get(keys.result_key(pipeline.myotube_hash))
+        )
+        state = State.model_validate_json(
+            await redis.get(keys.state_key(pipeline.myotube_hash))
+        )
+        path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
+        if not path:
+            # path might be cleaned by regular image cleaning
             path = get_fp(settings.images_dir)
-            pipeline.save_myotube_image(path)
+            _ = pipeline.save_myotube_image(path)
             background_tasks.add_task(
                 set_cache,
-                keys.image_path_key(pipeline.myotube_hash),
-                path,
+                {keys.image_path_key(pipeline.myotube_hash): path},
                 redis,
             )
+    else:
+        # Case when image is not cached
+        state = State()
+        myos = pipeline.execute().information_metrics.myotubes
+        path = get_fp(settings.images_dir)
+        pipeline.save_myotube_image(path)
 
-    # pipeline._myosam_predictor.update_amg_config(
-    #     config.amg_config.model_dump()
-    # )
-    # pipeline.set_measure_unit(config.measure_unit)
-    # result = pipeline.execute()
-    # result = pipeline.execute_validation(await image.read(), image.filename)
-    # background_tasks.add_task(
-    #     set_cache,
-    #     keys.validation_key(pipeline.validation_hash),
-    #     result.state,
-    #     redis,
-    # )
-    return img_cache, state
+        background_tasks.add_task(
+            set_cache,
+            {
+                keys.result_key(pipeline.myotube_hash): myos.model_dump_json(),
+                keys.image_path_key(pipeline.myotube_hash): path,
+                keys.state_key(pipeline.myotube_hash): state.model_dump_json(),
+            },
+            redis,
+        )
+        # Run pipeline
+        myos = pipeline.execute().information_metrics.myotubes.myo_objects
+
+    return ValidationResponse(
+        roi_coords=[myo.roi_coords for myo in myos],
+        state=state,
+        hash_str=pipeline.myotube_hash,
+    )
 
 
 @app.post("/run/", response_model=InformationMetrics)

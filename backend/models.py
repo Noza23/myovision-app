@@ -12,8 +12,12 @@ from myo_sam.inference.predictors.config import AmgConfig
 class Config(BaseModel):
     """Configuration for the pipeline."""
 
-    amg_config: AmgConfig
-    measure_unit: float = Field(description="The measure unit in pixels.")
+    amg_config: AmgConfig = Field(
+        description="The configuration for the AMG model.", default=AmgConfig()
+    )
+    measure_unit: float = Field(
+        description="The measure unit in pixels.", default=1
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -47,7 +51,9 @@ class State(BaseModel):
 class ValidationResponse(BaseModel):
     """Validation response."""
 
-    roi_coords: list[list[int]] = Field(description="Contours of the ROI.")
+    roi_coords: list[list[list[int]]] = Field(
+        description="Myoobjects containing ROIs."
+    )
     state: State = Field(description="validation state.")
     hash_str: str = Field(description="The hash string of the image.")
 
