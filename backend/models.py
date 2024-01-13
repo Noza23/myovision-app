@@ -62,7 +62,7 @@ class REDIS_KEYS:
     def __init__(self, prefix: str = "myovision"):
         self.prefix = prefix
 
-    def image_hash_key(self, hash_str: str) -> str:
+    def result_key(self, hash_str: str) -> str:
         """A key for image hash."""
         return f"{self.prefix}:image:{hash_str}"
 
