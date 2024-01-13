@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     redis_url: str
     myosam_model: str
     stardist_model: str
+    images_dir: str
 
 
 class ENDPOINTS(str, Enum):
@@ -51,7 +52,7 @@ class InferenceResponse(BaseModel):
     hash_str_myotube: Union[str, None] = Field(
         description="The hash string of the myotube image."
     )
-    hash_str_nuclei: str[str, None] = Field(
+    hash_str_nuclei: Union[str, None] = Field(
         description="The hash string of the nuclei image."
     )
 

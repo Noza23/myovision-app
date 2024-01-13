@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated
+# import os
+
 from fastapi import (
     FastAPI,
     Depends,
@@ -17,7 +19,13 @@ from myo_sam.inference.models.information import InformationMetrics
 
 from functools import lru_cache
 
-from .models import Settings, REDIS_KEYS, Config
+from .models import (
+    Settings,
+    REDIS_KEYS,
+    Config,
+    ValidationResponse,
+)
+# from .utils import get_fn
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
@@ -96,6 +104,39 @@ async def get_config():
     )
 
 
+@app.post("/run/validation/", response_model=ValidationResponse)
+async def run_validation(
+    image: UploadFile,
+    config: Config,
+    background_tasks: BackgroundTasks,
+    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
+    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
+):
+    """Run the pipeline in validation mode."""
+    pipeline.set_myotube_image(await image.read(), image.filename)
+    if await is_cached(keys.image_path_key(pipeline.myotube_hash), redis):
+        img_cache = await redis.get(keys.image_path_key(pipeline.myotube_hash))
+        img_path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
+
+    if not img_path:
+        pass
+
+    # pipeline._myosam_predictor.update_amg_config(
+    #     config.amg_config.model_dump()
+    # )
+    # pipeline.set_measure_unit(config.measure_unit)
+    # result = pipeline.execute()
+    # result = pipeline.execute_validation(await image.read(), image.filename)
+    # background_tasks.add_task(
+    #     set_cache,
+    #     keys.validation_key(pipeline.validation_hash),
+    #     result.state,
+    #     redis,
+    # )
+    return img_cache
+
+
 @app.post("/run/", response_model=InformationMetrics)
 async def run(
     config: Config,
@@ -111,15 +152,13 @@ async def run(
 
     if myotube.filename:
         pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
-        if await is_cached(keys.myotube_key(pipeline.myotube_hash), redis):
-            myo_cache = await redis.get(
-                keys.myotube_key(pipeline.myotube_hash)
-            )
+        if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
+            myo_cache = await redis.get(keys.result_key(pipeline.myotube_hash))
 
     if nuclei.filename:
         pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
-        if await is_cached(keys.nuclei_key(pipeline.nuclei_hash), redis):
-            nucl_cache = await redis.get(keys.nuclei_key(pipeline.nuclei_hash))
+        if await is_cached(keys.result_key(pipeline.nuclei_hash), redis):
+            nucl_cache = await redis.get(keys.result_key(pipeline.nuclei_hash))
 
     pipeline._myosam_predictor.update_amg_config(
         config.amg_config.model_dump()
@@ -130,7 +169,7 @@ async def run(
     if pipeline.myotube_image:
         background_tasks.add_task(
             set_cache,
-            keys.myotube_key(pipeline.myotube_hash),
+            keys.result_key(pipeline.myotube_hash),
             result.information_metrics.myotubes.model_dump_json(),
             redis,
         )
@@ -138,7 +177,7 @@ async def run(
     if pipeline.nuclei_image:
         background_tasks.add_task(
             set_cache,
-            keys.nuclei_key(pipeline.nuclei_hash),
+            keys.result_key(pipeline.nuclei_hash),
             result.information_metrics.nucleis.model_dump_json(),
             redis,
         )
