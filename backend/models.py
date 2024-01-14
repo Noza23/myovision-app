@@ -8,14 +8,22 @@ from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.predictors.config import AmgConfig
 
 
+class GeneralConfig(BaseModel):
+    """General configuration for the pipeline."""
+
+    measure_unit: float = Field(
+        description="The measure unit for the image.", default=1.0
+    )
+
+
 class Config(BaseModel):
     """Configuration for the pipeline."""
 
     amg_config: AmgConfig = Field(
-        description="The configuration for the AMG model.", default=AmgConfig()
+        description="Config for AMG algorithm.", default=AmgConfig()
     )
-    measure_unit: float = Field(
-        description="The measure unit in pixels.", default=1
+    general_config = Field(
+        description="General Pipeline Config.", default=GeneralConfig()
     )
 
     @model_validator(mode="before")
