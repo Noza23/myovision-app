@@ -22,7 +22,7 @@ class Config(BaseModel):
     amg_config: AmgConfig = Field(
         description="Config for AMG algorithm.", default=AmgConfig()
     )
-    general_config = Field(
+    general_config: GeneralConfig = Field(
         description="General Pipeline Config.", default=GeneralConfig()
     )
 
