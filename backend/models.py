@@ -55,14 +55,21 @@ class ObjectNames(str, Enum):
 class State(BaseModel):
     """Validation state."""
 
-    valid: list[int] = Field(description="valid contours.", default=[])
-    invalid: list[int] = Field(description="invalid contours.", default=[])
+    valid: set[int] = Field(description="valid contours.", default=[])
+    invalid: set[int] = Field(description="invalid contours.", default=[])
+    done: bool = Field(description="validation done.", default=False)
+
+    def get_next(self) -> int:
+        """Get the next contour index."""
+        combined = self.valid | self.invalid
+        if len(combined) == 0:
+            return 0
+        return max(combined) + 1
 
 
 class ValidationResponse(BaseModel):
     """Validation response."""
 
-    roi_coords: list[list[list[int]]] = Field(description="ROI coords.")
     state: State = Field(description="validation state.")
     image_hash: str = Field(description="The hash string of the image.")
     image_path: str = Field(description="The path of the image.")
