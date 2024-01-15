@@ -9,6 +9,7 @@ from fastapi import (
     Request,
     UploadFile,
     File,
+    HTTPException,
 )
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
 from myo_sam.inference.models.information import InformationMetrics
+from myo_sam.inference.utils import hash_bytes
 
 from functools import lru_cache
 
@@ -25,6 +27,7 @@ from .models import (
     Config,
     State,
     ValidationResponse,
+    InferenceResponse,
 )
 from .utils import get_fp
 import json
@@ -115,24 +118,21 @@ async def run_validation(
     """Run the pipeline in validation mode."""
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
+    img_hash = pipeline.myotube_hash
 
-    if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
+    if await is_cached(keys.result_key(img_hash), redis):
         # Case when image is cached
-        myos = json.loads(
-            await redis.get(keys.result_key(pipeline.myotube_hash))
-        )
+        myos = json.loads(await redis.get(keys.result_key(img_hash)))
         state = State.model_validate_json(
-            await redis.get(keys.state_key(pipeline.myotube_hash))
+            await redis.get(keys.state_key(img_hash))
         )
-        path = await redis.get(keys.image_path_key(pipeline.myotube_hash))
+        path = await redis.get(keys.image_path_key(img_hash))
         if not path:
             # path might be cleaned by regular image cleaning
             path = get_fp(settings.images_dir)
             _ = pipeline.save_myotube_image(path)
             background_tasks.add_task(
-                set_cache,
-                {keys.image_path_key(pipeline.myotube_hash): path},
-                redis,
+                set_cache, {keys.image_path_key(img_hash): path}, redis
             )
     else:
         # Case when image is not cached
@@ -144,89 +144,92 @@ async def run_validation(
         background_tasks.add_task(
             set_cache,
             {
-                keys.result_key(pipeline.myotube_hash): myos.model_dump_json(),
-                keys.image_path_key(pipeline.myotube_hash): path,
-                keys.state_key(pipeline.myotube_hash): state.model_dump_json(),
+                keys.result_key(img_hash): myos.model_dump_json(),
+                keys.image_path_key(img_hash): path,
+                keys.state_key(img_hash): state.model_dump_json(),
             },
             redis,
         )
         # Run pipeline
-        pipeline._myosam_predictor.update_amg_config(
-            config.amg_config.model_dump()
-        )
+        pipeline._myosam_predictor.update_amg_config(config.amg_config)
+        pipeline.set_measure_unit(config.general_config.measure_unit)
         # background_tasks.add_task(pipeline.execute)
         myos = pipeline.execute().information_metrics.myotubes.myo_objects
 
     return ValidationResponse(
         roi_coords=[myo.roi_coords for myo in myos],
         state=state,
-        hash_str=pipeline.myotube_hash,
+        hash_str=img_hash,
     )
 
 
-@app.post("/inference/", response_model=InformationMetrics)
+@app.post("/inference/", response_model=InferenceResponse)
 async def run_inference(
+    config: Config,
+    background_tasks: BackgroundTasks,
+    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
+    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
-    config: Config = Depends(get_config),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)] = Depends(
-        setup_redis
-    ),
-    pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)] = Depends(
-        get_pipeline_instance
-    ),
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)] = Depends(REDIS_KEYS),
 ):
     """Run the pipeline in inference mode."""
-    pass
+    if not myotube.filename and not nuclei.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Either myotube or nuclei image must be provided.",
+        )
 
+    myo_cache, nucl_cache = None, None
+    if myotube.filename:
+        pipeline.set_myotube_image(await myotube.read(), myotube.filename)
+        img_hash = pipeline.myotube_hash
+        if await is_cached(keys.result_key(img_hash), redis):
+            myo_cache = await redis.get(keys.result_key(img_hash))
+            path = await redis.get(keys.image_path_key(img_hash))
+            if not path:
+                # path might be cleaned by regular image cleaning
+                path = get_fp(settings.images_dir)
+                _ = pipeline.save_myotube_image(path)
+                background_tasks.add_task(
+                    set_cache, {keys.image_path_key(img_hash): path}, redis
+                )
+        else:
+            path = get_fp(settings.images_dir)
+            pipeline.save_myotube_image(path)
+            background_tasks.add_task(
+                set_cache, {keys.image_path_key(img_hash): path}, redis
+            )
 
-# @app.post("/run/", response_model=InformationMetrics)
-# async def run(
-#     config: Config,
-#     background_tasks: BackgroundTasks,
-#     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
-#     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
-#     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
-#     myotube: UploadFile = File(None),
-#     nuclei: UploadFile = File(None),
-# ):
-#     """Run the pipeline"""
-#     myo_cache, nucl_cache = None, None
+    if nuclei.filename:
+        pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
+        sec_img_hash = pipeline.nuclei_hash
+        if await is_cached(keys.result_key(sec_img_hash), redis):
+            nucl_cache = await redis.get(keys.result_key(sec_img_hash))
+    # Execute Pipeline
+    pipeline._myosam_predictor.update_amg_config(config.amg_config)
+    pipeline.set_measure_unit(config.general_config.measure_unit)
+    result = pipeline.execute(myo_cache, nucl_cache).information_metrics
+    myos = result.myotubes
+    nucls = result.nucleis
 
-#     if myotube.filename:
-#         pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
-#         if await is_cached(keys.result_key(pipeline.myotube_hash), redis):
-#             myo_cache = await redis.get(keys.result_key(pipeline.myotube_hash))
+    if myotube.filename and not myo_cache:
+        background_tasks.add_task(
+            set_cache,
+            {keys.result_key(sec_img_hash): myos.model_dump_json()},
+        )
 
-#     if nuclei.filename:
-#         pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
-#         if await is_cached(keys.result_key(pipeline.nuclei_hash), redis):
-#             nucl_cache = await redis.get(keys.result_key(pipeline.nuclei_hash))
-
-#     pipeline._myosam_predictor.update_amg_config(
-#         config.amg_config.model_dump()
-#     )
-#     pipeline.set_measure_unit(config.measure_unit)
-#     result = pipeline.execute(myo_cache, nucl_cache)
-
-#     if pipeline.myotube_image:
-#         background_tasks.add_task(
-#             set_cache,
-#             keys.result_key(pipeline.myotube_hash),
-#             result.information_metrics.myotubes.model_dump_json(),
-#             redis,
-#         )
-
-#     if pipeline.nuclei_image:
-#         background_tasks.add_task(
-#             set_cache,
-#             keys.result_key(pipeline.nuclei_hash),
-#             result.information_metrics.nucleis.model_dump_json(),
-#             redis,
-#         )
-#     return result.information_metrics
+    if nuclei.filename and not nucl_cache:
+        background_tasks.add_task(
+            set_cache,
+            {keys.result_key(sec_img_hash): nucls.model_dump_json()},
+        )
+    path = get_fp(settings.images_dir)
+    img_drawn = pipeline.draw_contours_on_myotube_image(myos, nucls)
+    pipeline.save_myotube_image(path, img_drawn)
+    return InferenceResponse(
+        iamge_path=path, image_hash=img_hash, secondary_image_hash=sec_img_hash
+    )
 
 
 @app.get("/redis_status/")
