@@ -47,6 +47,11 @@ class ENDPOINTS(str, Enum):
     INFERENCE = "inference"
 
 
+class ObjectNames(str, Enum):
+    MYOTUBES = "myotubes"
+    NUCLEIS = "nucleis"
+
+
 class State(BaseModel):
     """Validation state."""
 

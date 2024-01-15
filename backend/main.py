@@ -17,8 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.information import InformationMetrics
-
+from myo_sam.inference.models.base import Nucleis, Myotubes
 
 from .models import (
     Settings,
@@ -27,6 +26,7 @@ from .models import (
     State,
     ValidationResponse,
     InferenceResponse,
+    ObjectNames,
 )
 from .utils import get_fp
 
@@ -234,10 +234,36 @@ async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
         return {"status": False}
 
 
-@app.get("/adjust_unit/", response_model=InformationMetrics)
-def adjust_unit(metrics: InformationMetrics, mu: float):
+@app.get("/adjust_unit/{obj_name}/")
+async def adjust_unit(
+    obj_name: ObjectNames,
+    hash: str,
+    mu: float,
+    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
+    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+):
     """Adjust unit of the metrics"""
-    return metrics.adjust_measure_unit(mu)
+    if obj_name == ObjectNames.MYOTUBES:
+        myos = await redis.get(keys.result_key(hash))
+        if not myos:
+            raise HTTPException(
+                status_code=404,
+                detail="myotubes not found for the given hash.",
+            )
+        myos = Myotubes.model_validate_json(myos)
+        myos.adjust_measure_unit(mu)
+        await redis.set(keys.result_key(hash), myos.model_dump_json())
+    elif obj_name == ObjectNames.NUCLEIS:
+        nucls = await redis.get(keys.result_key(hash))
+        if not nucls:
+            raise HTTPException(
+                status_code=404,
+                detail="nucleis not found for the given hash.",
+            )
+        nucls = Nucleis.model_validate_json(nucls)
+        nucls.adjust_measure_unit(mu)
+        await redis.set(keys.result_key(hash), nucls.model_dump_json())
+    return Response(status_code=200)
 
 
 @app.exception_handler(404)
