@@ -4,7 +4,6 @@ from pydantic import BaseModel, model_validator, Field
 from enum import Enum
 import json
 
-from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.predictors.config import AmgConfig
 
 
@@ -67,11 +66,13 @@ class ValidationResponse(BaseModel):
 class InferenceResponse(BaseModel):
     """Inference response."""
 
-    information_data: InformationMetrics
-    myotube_hash: str = Field(description="The hash string of the image.")
-    myotube_image_path: str = Field(description="The path of the image.")
-    nuclei_hash: str = Field(description="The hash string of the image.")
-    nuclei_image_path: str = Field(description="The path of the image.")
+    # information_data: InformationMetrics # Maybe not needed due to websocket
+
+    image_path: str = Field(description="The path of the image.")
+    image_hash: str = Field(description="The hash string of the image.")
+    secondary_image_hash: str = Field(
+        description="The hash string of the secondary image."
+    )
 
 
 class REDIS_KEYS:
