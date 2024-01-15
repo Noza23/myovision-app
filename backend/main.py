@@ -7,7 +7,6 @@ from fastapi import (
     FastAPI,
     Depends,
     BackgroundTasks,
-    Request,
     UploadFile,
     File,
     HTTPException,
@@ -264,10 +263,3 @@ async def adjust_unit(
         nucls.adjust_measure_unit(mu)
         await redis.set(keys.result_key(hash), nucls.model_dump_json())
     return Response(status_code=200)
-
-
-@app.exception_handler(404)
-async def error_handler(request: Request, exc: Exception) -> Response:
-    """Redirects request and exception to /error"""
-    return Response(b"not found", status_code=404)
-    # return RedirectResponse(url="/", status_code=404)
