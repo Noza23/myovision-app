@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from typing import Annotated
-# import os
+import json
 
 from fastapi import (
     FastAPI,
@@ -17,9 +18,7 @@ from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
 from myo_sam.inference.models.information import InformationMetrics
-from myo_sam.inference.utils import hash_bytes
 
-from functools import lru_cache
 
 from .models import (
     Settings,
@@ -30,7 +29,7 @@ from .models import (
     InferenceResponse,
 )
 from .utils import get_fp
-import json
+
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
@@ -137,6 +136,8 @@ async def run_validation(
     else:
         # Case when image is not cached
         state = State()
+        pipeline._myosam_predictor.update_amg_config(config.amg_config)
+        pipeline.set_measure_unit(config.general_config.measure_unit)
         myos = pipeline.execute().information_metrics.myotubes
         path = get_fp(settings.images_dir)
         pipeline.save_myotube_image(path)
@@ -150,11 +151,6 @@ async def run_validation(
             },
             redis,
         )
-        # Run pipeline
-        pipeline._myosam_predictor.update_amg_config(config.amg_config)
-        pipeline.set_measure_unit(config.general_config.measure_unit)
-        # background_tasks.add_task(pipeline.execute)
-        myos = pipeline.execute().information_metrics.myotubes.myo_objects
 
     return ValidationResponse(
         roi_coords=[myo.roi_coords for myo in myos],
@@ -194,24 +190,17 @@ async def run_inference(
                 background_tasks.add_task(
                     set_cache, {keys.image_path_key(img_hash): path}, redis
                 )
-        else:
-            path = get_fp(settings.images_dir)
-            pipeline.save_myotube_image(path)
-            background_tasks.add_task(
-                set_cache, {keys.image_path_key(img_hash): path}, redis
-            )
-
     if nuclei.filename:
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
         sec_img_hash = pipeline.nuclei_hash
         if await is_cached(keys.result_key(sec_img_hash), redis):
             nucl_cache = await redis.get(keys.result_key(sec_img_hash))
+
     # Execute Pipeline
     pipeline._myosam_predictor.update_amg_config(config.amg_config)
     pipeline.set_measure_unit(config.general_config.measure_unit)
     result = pipeline.execute(myo_cache, nucl_cache).information_metrics
-    myos = result.myotubes
-    nucls = result.nucleis
+    myos, nucls = result.myotubes, result.nucleis
 
     if myotube.filename and not myo_cache:
         background_tasks.add_task(
@@ -224,8 +213,10 @@ async def run_inference(
             set_cache,
             {keys.result_key(sec_img_hash): nucls.model_dump_json()},
         )
-    path = get_fp(settings.images_dir)
+
+    # Overlay contours on main image
     img_drawn = pipeline.draw_contours_on_myotube_image(myos, nucls)
+    path = get_fp(settings.images_dir)
     pipeline.save_myotube_image(path, img_drawn)
     return InferenceResponse(
         iamge_path=path, image_hash=img_hash, secondary_image_hash=sec_img_hash
