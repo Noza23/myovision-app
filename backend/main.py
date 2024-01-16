@@ -1,13 +1,10 @@
 from contextlib import asynccontextmanager
 import json
-from typing import Annotated
-
 from fastapi import (
     FastAPI,
     HTTPException,
     status,
     UploadFile,
-    Depends,
     WebSocket,
     WebSocketException,
 )
@@ -70,28 +67,23 @@ async def redis_status():
 
 
 @app.post("/validation/", response_model=ValidationResponse)
-async def run_validation(
-    image: UploadFile,
-    config: Config,
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
-):
+async def run_validation(image: UploadFile, config: Config):
     """Run the pipeline in validation mode."""
     print("Recived image: ", image.filename)
     print("Recived config: ", config)
-    fake_hash = keys.result_key("fake_hash")
+    fake_hash = redis_keys.result_key("fake_hash")
     path = "images/myotube.png"
-    return ValidationResponse(hash_str=fake_hash, image_path=path)
+    return ValidationResponse(image_hash=fake_hash, image_path=path)
 
 
 @app.websocket("/validation/{hash_str}/")
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
 ):
     """Websocket for validation mode."""
     await websocket.accept()
-    if hash_str != keys.result_key("fake_hash"):
+    if hash_str != redis_keys.result_key("fake_hash"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Hash string not found.",
