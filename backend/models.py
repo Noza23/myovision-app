@@ -67,13 +67,11 @@ class ValidationResponse(BaseModel):
 class InferenceResponse(BaseModel):
     """Inference response."""
 
-    # information_data: InformationMetrics # Maybe not needed due to websocket
-
-    image_path: Union[str, None] = Field(description="The path of the image.")
+    image_path: str = Field(description="The path of the image.")
     image_hash: Union[str, None] = Field(
         description="The hash string of the image."
     )
-    secondary_image_hash: str = Field(
+    secondary_image_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
 
