@@ -1,18 +1,9 @@
 from contextlib import asynccontextmanager
 
-# from typing import Annotated
-from fastapi import FastAPI, Request, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-# from redis import asyncio as aioredis  # type: ignore
 
-# from myo_sam.inference.pipeline import Pipeline
-from .information import InformationMetrics
-# from myo_sam.inference.models.information import InformationMetrics
-
-# from functools import lru_cache
-
-from .models import Settings, REDIS_KEYS, Config
+from .models import Settings, REDIS_KEYS, Config, InferenceResponse
 import json
 import random
 
@@ -53,34 +44,10 @@ app.add_middleware(
 )
 
 
-# def get_pipeline_instance() -> Pipeline:
-#     """Each user gets new pipeline instance, where models are shared."""
-#     return pipeline.model_copy()
-
-
 @app.get("/get_config/", response_model=Config)
 async def get_config():
     """Get the configuration of the pipeline."""
     return Config(measure_unit=1.0)
-
-
-@app.post("/run/", response_model=InformationMetrics)
-async def run(
-    config: Config,
-    myotube: UploadFile = File(None),
-    nuclei: UploadFile = File(None),
-):
-    if myotube:
-        print("myotube: ", myotube.filename)
-    if nuclei:
-        print("nuclei: ", nuclei.filename)
-    print("form: ", config.model_dump_json())
-    info = InformationMetrics.model_validate(
-        json.load(open("data/info_data.json"))
-    )
-    info.myotubes = info.myotubes[:2]
-    info.nucleis = info.nucleis[:2]
-    return info
 
 
 @app.get("/redis_status/")
@@ -92,96 +59,61 @@ async def status():
         return {"status": False}
 
 
-@app.exception_handler(404)
-async def error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Redirects request and exception to /error"""
-    return JSONResponse(
-        status_code=404,
-        content={"message": "Not found"},
-    )
+@app.post("/inference/", response_model=InferenceResponse)
+async def run_inference(
+    config: Config,
+    myotube: UploadFile = File(None),
+    nuclei: UploadFile = File(None),
+):
+    """Run the pipeline in inference mode."""
+    if not myotube.filename and not nuclei.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Either myotube or nuclei image must be provided.",
+        )
 
+    # myo_cache, nucl_cache = None, None
+    # if myotube.filename:
+    #     pipeline.set_myotube_image(await myotube.read(), myotube.filename)
+    #     img_hash = pipeline.myotube_hash
+    #     if await is_cached(keys.result_key(img_hash), redis):
+    #         myo_cache = await redis.get(keys.result_key(img_hash))
+    #         path = await redis.get(keys.image_path_key(img_hash))
+    #         if not path:
+    #             # path might be cleaned by regular image cleaning
+    #             path = get_fp(settings.images_dir)
+    #             _ = pipeline.save_myotube_image(path)
+    #             background_tasks.add_task(
+    #                 set_cache, {keys.image_path_key(img_hash): path}, redis
+    #             )
+    # if nuclei.filename:
+    #     pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
+    #     sec_img_hash = pipeline.nuclei_hash
+    #     if await is_cached(keys.result_key(sec_img_hash), redis):
+    #         nucl_cache = await redis.get(keys.result_key(sec_img_hash))
 
-# @lru_cache  # Work on single connection
-# async def setup_redis() -> None:
-#     """Redis connection is single and shared across all users."""
-#     print("Fake connection to redis")
-#     try:
-#         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-#     except Exception as e:
-#         print(f"Failed establishing connection to redis: {e}")
-#     return redis
+    # # Execute Pipeline
+    # pipeline._myosam_predictor.update_amg_config(config.amg_config)
+    # pipeline.set_measure_unit(config.general_config.measure_unit)
+    # result = pipeline.execute(myo_cache, nucl_cache).information_metrics
+    # myos, nucls = result.myotubes, result.nucleis
 
+    # if myotube.filename and not myo_cache:
+    #     background_tasks.add_task(
+    #         set_cache,
+    #         {keys.result_key(sec_img_hash): myos.model_dump_json()},
+    #     )
 
-# async def set_cache(key: str, value: str, redis: aioredis.Redis) -> None:
-#     """cache single item"""
-#     await redis.set(key, value)
-#     await redis.bgsave()
+    # if nuclei.filename and not nucl_cache:
+    #     background_tasks.add_task(
+    #         set_cache,
+    #         {keys.result_key(sec_img_hash): nucls.model_dump_json()},
+    #     )
 
-
-# async def is_cached(key: str, redis: aioredis.Redis) -> bool:
-#     """check if key is cached"""
-#     return await redis.exists(key) > 0
-
-
-# async def clear_cache(redis: aioredis.Redis, key: str) -> None:
-#     """clear cache for a single key"""
-#     await redis.delete(key)
-
-# @app.post("/run/", response_model=InformationMetrics)
-# async def run(
-#     background_tasks: BackgroundTasks,
-#     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
-#     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
-#     keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
-#     myotube: UploadFile = File(None),
-#     nuclei: UploadFile = File(None),
-# ):
-#     """Run the pipeline"""
-#     myo_cache, nucl_cache = None, None
-#     if myotube.filename:
-#         pipeline.set_nuclei_image(await myotube.read(), myotube.filename)
-#         if await is_cached(keys.myotube_key(pipeline.myotube_hash), redis):
-#             myo_cache = await redis.get(
-#                 keys.myotube_key(pipeline.myotube_hash)
-#             )
-
-#     if nuclei.filename:
-#         pipeline.set_myotube_image(await nuclei.read(), nuclei.filename)
-#         if await is_cached(keys.nuclei_key(pipeline.nuclei_hash), redis):
-#             nucl_cache = await redis.get(keys.nuclei_key(pipeline.nuclei_hash))
-
-#     result = pipeline.execute(myo_cache, nucl_cache)
-
-#     if pipeline.myotube_image:
-#         background_tasks.add_task(
-#             set_cache,
-#             keys.myotube_key(pipeline.myotube_hash),
-#             result.information_metrics.myotubes.model_dump_json(),
-#             redis,
-#         )
-
-#     if pipeline.nuclei_image:
-#         background_tasks.add_task(
-#             set_cache,
-#             keys.nuclei_key(pipeline.nuclei_hash),
-#             result.information_metrics.nucleis.model_dump_json(),
-#             redis,
-#         )
-#     return result.information_metrics.model_dump_json()
-
-
-# @app.get("/status/")
-# async def status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
-#     """check status of the redis connection"""
-#     try:
-#         status = await redis.ping()
-#         return {"status": status}
-#     except Exception as e:
-#         print(f"Failed establishing connection to redis: {e}")
-#         return {"status": False}
-
-
-# @app.get("/adjust_unit/", response_model=InformationMetrics)
-# def adjust_unit(metrics: InformationMetrics, mu: float):
-#     """Adjust unit of the metrics"""
-#     return metrics.adjust_measure_unit(mu)
+    # # Overlay contours on main image
+    # img_drawn = pipeline.draw_contours_on_myotube_image(myos, nucls)
+    # path = get_fp(settings.images_dir)
+    # pipeline.save_myotube_image(path, img_drawn)
+    # return InferenceResponse(
+    #     iamge_path=path, image_hash=img_hash, secondary_image_hash=sec_img_hash
+    # )

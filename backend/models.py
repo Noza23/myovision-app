@@ -81,19 +81,54 @@ class ENDPOINTS(str, Enum):
     INFERENCE = "inference"
 
 
+class ObjectNames(str, Enum):
+    MYOTUBES = "myotubes"
+    NUCLEIS = "nucleis"
+
+
+class State(BaseModel):
+    """Validation state."""
+
+    valid: set[int] = Field(description="valid contours.", default=[])
+    invalid: set[int] = Field(description="invalid contours.", default=[])
+    done: bool = Field(description="validation done.", default=False)
+
+    def get_next(self) -> int:
+        """Get the next contour index."""
+        combined = self.valid | self.invalid
+        if len(combined) == 0:
+            return 0
+        return max(combined) + 1
+
+
+class ValidationResponse(BaseModel):
+    """Validation response."""
+
+    image_hash: str = Field(description="The hash string of the image.")
+    image_path: str = Field(description="The path of the image.")
+
+
+class InferenceResponse(BaseModel):
+    """Inference response."""
+
+    # information_data: InformationMetrics # Maybe not needed due to websocket
+
+    image_path: str = Field(description="The path of the image.")
+    image_hash: str = Field(description="The hash string of the image.")
+    secondary_image_hash: str = Field(
+        description="The hash string of the secondary image."
+    )
+
+
 class REDIS_KEYS:
     """Methods to generate key names for Redis data."""
 
     def __init__(self, prefix: str = "myovision"):
         self.prefix = prefix
 
-    def myotube_key(self, hash_str: str) -> str:
-        """A key for myotube image."""
-        return f"{self.prefix}:myotube:{hash_str}"
-
-    def nuclei_key(self, hash_str: str) -> str:
-        """A key for myotube mask."""
-        return f"{self.prefix}:nuclei:{hash_str}"
+    def result_key(self, hash_str: str) -> str:
+        """A key for image hash."""
+        return f"{self.prefix}:image:{hash_str}"
 
     def image_path_key(self, hash_str: str) -> str:
         """A key for image path."""
