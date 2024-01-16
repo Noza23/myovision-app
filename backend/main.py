@@ -77,7 +77,7 @@ def get_pipeline_instance() -> Pipeline:
 
 
 @lru_cache  # Work on single connection
-async def setup_redis() -> aioredis.Redis:
+def setup_redis() -> aioredis.Redis:
     """Redis connection is single and shared across all users."""
     try:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -94,7 +94,7 @@ async def clear_path_cache(redis: aioredis.Redis) -> None:
 
 
 @app.get("/get_config/", response_model=Config)
-async def get_config():
+def get_config():
     """Get the configuration of the pipeline."""
     return Config()
 
