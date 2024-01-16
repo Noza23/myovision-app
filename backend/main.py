@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     print("Stopping application")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -88,7 +88,6 @@ async def setup_redis() -> aioredis.Redis:
 async def set_cache(mapping: dict[str, str], redis: aioredis.Redis) -> None:
     """cache multiple items"""
     await redis.mset(mapping)
-    await redis.bgsave()
 
 
 async def is_cached(key: str, redis: aioredis.Redis) -> bool:
