@@ -86,19 +86,11 @@ async def setup_redis() -> aioredis.Redis:
     return redis
 
 
-async def set_cache(mapping: dict[str, str], redis: aioredis.Redis) -> None:
-    """cache multiple items"""
-    await redis.mset(mapping)
-
-
-async def is_cached(key: str, redis: aioredis.Redis) -> bool:
-    """check if key is cached"""
-    return await redis.exists(key) > 0
-
-
-async def clear_cache(redis: aioredis.Redis, key: str) -> None:
-    """clear cache for a single key"""
-    await redis.delete(key)
+async def clear_path_cache(redis: aioredis.Redis) -> None:
+    """clear cache for all paths"""
+    keys = await redis.keys(redis_keys.image_path_key("*"))
+    if keys:
+        await redis.delete(*keys)
 
 
 @app.get("/get_config/", response_model=Config)
@@ -121,7 +113,7 @@ async def run_validation(
     pipeline.set_myotube_image(await image.read(), image.filename)
     img_hash = pipeline.myotube_hash
 
-    if await is_cached(keys.result_key(img_hash), redis):
+    if await redis.exists(keys.result_key(img_hash)):
         # Case when image is cached
         myos = Myotubes.model_validate_json(
             await redis.get(keys.result_key(img_hash))
@@ -149,7 +141,7 @@ async def run_validation(
             path = get_fp(settings.images_dir)
             pipeline.save_myotube_image(path, img_drawn)
             background_tasks.add_task(
-                set_cache, {keys.image_path_key(img_drawn_hash): path}, redis
+                redis.set, keys.image_path_key(img_drawn_hash), path
             )
     else:
         # Case when image is not cached
@@ -161,13 +153,12 @@ async def run_validation(
         pipeline.save_myotube_image(path)
 
         background_tasks.add_task(
-            set_cache,
+            redis.mset,
             {
                 keys.result_key(img_hash): myos.model_dump_json(),
                 keys.image_path_key(img_hash): path,
                 keys.state_key(img_hash): state.model_dump_json(),
             },
-            redis,
         )
 
     return ValidationResponse(hash_str=img_hash, image_path=path)
@@ -214,9 +205,7 @@ async def validation_ws(
         elif data == 2:
             # Skip contour: move to end and recache result
             _ = mo.move_object_to_end(i)
-            await set_cache(
-                {keys.result_key(hash_str): mo.model_dump_json()}, redis
-            )
+            await redis.set(keys.result_key(hash_str), mo.model_dump_json())
         elif data == -1:
             # Undo contour
             state.valid.discard(i)
@@ -228,9 +217,7 @@ async def validation_ws(
             )
         # Update state in cache
         background_tasks.add_task(
-            set_cache,
-            {keys.state_key(hash_str): state.model_dump_json()},
-            redis,
+            redis.set, keys.state_key(hash_str), state.model_dump_json()
         )
         # Send next contour
         step = data != 2 if data != -1 else -1
@@ -260,7 +247,7 @@ async def run_inference(
     if myotube.filename:
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
         img_hash = pipeline.myotube_hash
-        if await is_cached(keys.result_key(img_hash), redis):
+        if await redis.exists(keys.result_key(img_hash)):
             myo_cache = await redis.get(keys.result_key(img_hash))
             path = await redis.get(keys.image_path_key(img_hash))
             if not path:
@@ -268,12 +255,12 @@ async def run_inference(
                 path = get_fp(settings.images_dir)
                 _ = pipeline.save_myotube_image(path)
                 background_tasks.add_task(
-                    set_cache, {keys.image_path_key(img_hash): path}, redis
+                    redis.set, keys.image_path_key(img_hash), path
                 )
     if nuclei.filename:
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
         sec_img_hash = pipeline.nuclei_hash
-        if await is_cached(keys.result_key(sec_img_hash), redis):
+        if await redis.exists(keys.result_key(sec_img_hash)):
             nucl_cache = await redis.get(keys.result_key(sec_img_hash))
 
     # Execute Pipeline
@@ -284,14 +271,12 @@ async def run_inference(
 
     if myotube.filename and not myo_cache:
         background_tasks.add_task(
-            set_cache,
-            {keys.result_key(sec_img_hash): myos.model_dump_json()},
+            redis.set, keys.result_key(img_hash), myos.model_dump_json()
         )
 
     if nuclei.filename and not nucl_cache:
         background_tasks.add_task(
-            set_cache,
-            {keys.result_key(sec_img_hash): nucls.model_dump_json()},
+            redis.set, keys.result_key(sec_img_hash), nucls.model_dump_json()
         )
 
     # Overlay contours on main image
