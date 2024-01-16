@@ -284,7 +284,9 @@ async def run_inference(
     path = get_fp(settings.images_dir)
     pipeline.save_myotube_image(path, img_drawn)
     return InferenceResponse(
-        iamge_path=path, image_hash=img_hash, secondary_image_hash=sec_img_hash
+        iamge_path=path,
+        image_hash=img_hash if myotube.filename else None,
+        secondary_image_hash=sec_img_hash if nuclei.filename else None,
     )
 
 
