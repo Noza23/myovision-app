@@ -79,8 +79,10 @@ class Settings(BaseSettings):
 class State(BaseModel):
     """Validation state."""
 
-    valid: set[int] = Field(description="valid contours.", default=[])
-    invalid: set[int] = Field(description="invalid contours.", default=[])
+    valid: set[int] = Field(description="valid contours.", default_factory=set)
+    invalid: set[int] = Field(
+        description="invalid contours.", default_factory=set
+    )
     done: bool = Field(description="validation done.", default=False)
 
     def get_next(self) -> int:

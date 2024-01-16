@@ -8,6 +8,7 @@ from fastapi import (
     WebSocket,
     WebSocketException,
 )
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import Settings, REDIS_KEYS, Config, ValidationResponse, State
@@ -51,6 +52,46 @@ app.add_middleware(
 )
 
 
+html = """
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Chat</title>
+    </head>
+    <body>
+        <h1>WebSocket Chat</h1>
+        <form action="" onsubmit="sendMessage(event)">
+            <input type="text" id="messageText" autocomplete="off"/>
+            <button>Send</button>
+        </form>
+        <ul id='messages'>
+        </ul>
+        <script>
+            var ws = new WebSocket("ws://localhost:8000/validation/myovision:image:fake_hash");
+            ws.onmessage = function(event) {
+                var messages = document.getElementById('messages')
+                var message = document.createElement('li')
+                var content = document.createTextNode(event.data)
+                message.appendChild(content)
+                messages.appendChild(message)
+            };
+            function sendMessage(event) {
+                var input = document.getElementById("messageText")
+                ws.send(input.value)
+                input.value = ''
+                event.preventDefault()
+            }
+        </script>
+    </body>
+</html>
+"""
+
+
+@app.get("/")
+async def get():
+    return HTMLResponse(html)
+
+
 @app.get("/get_config/", response_model=Config)
 async def get_config():
     """Get the configuration of the pipeline."""
@@ -76,19 +117,20 @@ async def run_validation(image: UploadFile, config: Config):
     return ValidationResponse(image_hash=fake_hash, image_path=path)
 
 
-@app.websocket("/validation/{hash_str}/")
-async def validation_ws(
-    websocket: WebSocket,
-    hash_str: str,
-):
+@app.websocket("/validation/{hash_str}")
+async def validation_ws(websocket: WebSocket, hash_str: str):
     """Websocket for validation mode."""
+    print("Websocket connection openning")
     await websocket.accept()
+    print(hash_str)
     if hash_str != redis_keys.result_key("fake_hash"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Hash string not found.",
         )
-    mo = MyoObjects.model_validate(json.load(open("data/info_data.json")))
+    mo = MyoObjects.model_validate(
+        json.load(open("data/info_data.json"))["nucleis"]
+    )
     state = State()
 
     if state.done:
@@ -105,7 +147,6 @@ async def validation_ws(
         # Wating for response from front
         data = int(await websocket.receive_text())
         # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
-        assert data in (0, 1, 2, -1)
         if data == 0:
             print("Invalid contour")
             state.invalid.add(i)
@@ -121,13 +162,14 @@ async def validation_ws(
             state.invalid.discard(i)
         else:
             raise WebSocketException(
-                status_code=status.WS_1008_POLICY_VIOLATION,
-                detail="Invalid data received.",
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid data received.",
             )
         # Send next contour
         step = data != 2 if data != -1 else -1
+        i += step
         print("step: ", step)
         print("Sending next contour")
         await websocket.send_json(
-            {"roi_coords": mo[i + step].roi_coords, "contour_id": i + step}
+            {"roi_coords": mo[i].roi_coords, "contour_id": i}
         )
