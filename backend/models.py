@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import BaseModel, model_validator, Field
 
-from enum import Enum
+from typing import Union
 import json
 
 
@@ -76,16 +76,6 @@ class Settings(BaseSettings):
     images_dir: str
 
 
-class ENDPOINTS(str, Enum):
-    VALIDATION = "validation"
-    INFERENCE = "inference"
-
-
-class ObjectNames(str, Enum):
-    MYOTUBES = "myotubes"
-    NUCLEIS = "nucleis"
-
-
 class State(BaseModel):
     """Validation state."""
 
@@ -111,11 +101,11 @@ class ValidationResponse(BaseModel):
 class InferenceResponse(BaseModel):
     """Inference response."""
 
-    # information_data: InformationMetrics # Maybe not needed due to websocket
-
     image_path: str = Field(description="The path of the image.")
-    image_hash: str = Field(description="The hash string of the image.")
-    secondary_image_hash: str = Field(
+    image_hash: Union[str, None] = Field(
+        description="The hash string of the image."
+    )
+    secondary_image_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
 
