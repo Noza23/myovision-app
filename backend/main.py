@@ -328,9 +328,9 @@ async def adjust_unit(
             status_code=404, detail="myo_objects not found for the given hash."
         )
     try:
-        objs = Myotubes.model_validate_json(objs)
+        objs = Myotubes.model_validate(objs)
     except ValidationError:
-        objs = Nucleis.model_validate_json(objs)
+        objs = Nucleis.model_validate(objs)
     objs.adjust_measure_unit(mu)
     await redis.set(keys.result_key(hash_str), objs.model_dump_json())
     return Response(status_code=200)

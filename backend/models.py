@@ -1,7 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import BaseModel, model_validator, Field
 
-from enum import Enum
 import json
 
 from myo_sam.inference.predictors.config import AmgConfig
@@ -40,16 +39,6 @@ class Settings(BaseSettings):
     myosam_model: str
     stardist_model: str
     images_dir: str
-
-
-class ENDPOINTS(str, Enum):
-    VALIDATION = "validation"
-    INFERENCE = "inference"
-
-
-class ObjectNames(str, Enum):
-    MYOTUBES = "myotubes"
-    NUCLEIS = "nucleis"
 
 
 class State(BaseModel):
