@@ -70,7 +70,6 @@ class State(BaseModel):
 class ValidationResponse(BaseModel):
     """Validation response."""
 
-    state: State = Field(description="validation state.")
     image_hash: str = Field(description="The hash string of the image.")
     image_path: str = Field(description="The path of the image.")
 

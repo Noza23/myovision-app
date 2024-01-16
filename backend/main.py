@@ -125,6 +125,16 @@ async def run_validation(
         myos = Myotubes.model_validate_json(
             await redis.get(keys.result_key(img_hash))
         )
+        if not myos.myo_objects:
+            raise HTTPException(
+                status_code=404,
+                detail="myotubes not found for the given hash.",
+            )
+
+        if myos[0].measure_unit != config.general_config.measure_unit:
+            myos.adjust_measure_unit(config.general_config.measure_unit)
+            await redis.set(keys.result_key(img_hash), myos.model_dump_json())
+
         state = State.model_validate_json(
             await redis.get(keys.state_key(img_hash))
         )
@@ -159,7 +169,7 @@ async def run_validation(
             redis,
         )
 
-    return ValidationResponse(state=state, hash_str=img_hash, image_path=path)
+    return ValidationResponse(hash_str=img_hash, image_path=path)
 
 
 # Validation Socket: 0 = Invalid, 1 = Valid, 2 = Skip, -1 = Undo
