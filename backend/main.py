@@ -106,17 +106,16 @@ async def run_validation(
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
 ):
     """Run the pipeline in validation mode."""
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
     img_hash = pipeline.myotube_hash
 
-    if await redis.exists(keys.result_key(img_hash)):
+    if await redis.exists(redis_keys.result_key(img_hash)):
         # Case when image is cached
         myos = Myotubes.model_validate_json(
-            await redis.get(keys.result_key(img_hash))
+            await redis.get(redis_keys.result_key(img_hash))
         )
         if not myos:
             raise HTTPException(
@@ -126,22 +125,24 @@ async def run_validation(
 
         if myos[0].measure_unit != config.general_config.measure_unit:
             myos.adjust_measure_unit(config.general_config.measure_unit)
-            await redis.set(keys.result_key(img_hash), myos.model_dump_json())
+            await redis.set(
+                redis_keys.result_key(img_hash), myos.model_dump_json()
+            )
 
         state = State.model_validate_json(
-            await redis.get(keys.state_key(img_hash))
+            await redis.get(redis_keys.state_key(img_hash))
         )
         img_drawn = pipeline.draw_contours_on_myotube_image(
             myos.filter_by_ids(state.valid), thickness=2
         )
         img_drawn_hash = hash_bytes(img_drawn)
-        path = await redis.get(keys.image_path_key(img_drawn_hash))
+        path = await redis.get(redis_keys.image_path_key(img_drawn_hash))
         if not path:
             # path might be cleaned by regular image cleaning
             path = get_fp(settings.images_dir)
             pipeline.save_myotube_image(path, img_drawn)
             background_tasks.add_task(
-                redis.set, keys.image_path_key(img_drawn_hash), path
+                redis.set, redis_keys.image_path_key(img_drawn_hash), path
             )
     else:
         # Case when image is not cached
@@ -155,9 +156,9 @@ async def run_validation(
         background_tasks.add_task(
             redis.mset,
             {
-                keys.result_key(img_hash): myos.model_dump_json(),
-                keys.image_path_key(img_hash): path,
-                keys.state_key(img_hash): state.model_dump_json(),
+                redis_keys.result_key(img_hash): myos.model_dump_json(),
+                redis_keys.image_path_key(img_hash): path,
+                redis_keys.state_key(img_hash): state.model_dump_json(),
             },
         )
 
@@ -169,16 +170,15 @@ async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
     background_tasks: BackgroundTasks,
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
 ):
     """Websocket for validation mode."""
     await websocket.accept()
     mo = MyoObjects.model_validate_json(
-        await redis.get(keys.result_key(hash_str))
+        await redis.get(redis_keys.result_key(hash_str))
     )
     state = State.model_validate_json(
-        await redis.get(keys.state_key(hash_str))
+        await redis.get(redis_keys.state_key(hash_str))
     )
 
     if state.done:
@@ -205,19 +205,21 @@ async def validation_ws(
         elif data == 2:
             # Skip contour: move to end and recache result
             _ = mo.move_object_to_end(i)
-            await redis.set(keys.result_key(hash_str), mo.model_dump_json())
+            await redis.set(
+                redis_keys.result_key(hash_str), mo.model_dump_json()
+            )
         elif data == -1:
             # Undo contour
             state.valid.discard(i)
             state.invalid.discard(i)
         else:
             raise WebSocketException(
-                status_code=status.WS_1008_POLICY_VIOLATION,
-                detail="Invalid data received.",
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid data received.",
             )
         # Update state in cache
         background_tasks.add_task(
-            redis.set, keys.state_key(hash_str), state.model_dump_json()
+            redis.set, redis_keys.state_key(hash_str), state.model_dump_json()
         )
         # Send next contour
         step = data != 2 if data != -1 else -1
@@ -232,7 +234,6 @@ async def run_inference(
     background_tasks: BackgroundTasks,
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
 ):
@@ -247,21 +248,21 @@ async def run_inference(
     if myotube.filename:
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
         img_hash = pipeline.myotube_hash
-        if await redis.exists(keys.result_key(img_hash)):
-            myo_cache = await redis.get(keys.result_key(img_hash))
-            path = await redis.get(keys.image_path_key(img_hash))
+        if await redis.exists(redis_keys.result_key(img_hash)):
+            myo_cache = await redis.get(redis_keys.result_key(img_hash))
+            path = await redis.get(redis_keys.image_path_key(img_hash))
             if not path:
                 # path might be cleaned by regular image cleaning
                 path = get_fp(settings.images_dir)
                 _ = pipeline.save_myotube_image(path)
                 background_tasks.add_task(
-                    redis.set, keys.image_path_key(img_hash), path
+                    redis.set, redis_keys.image_path_key(img_hash), path
                 )
     if nuclei.filename:
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
         sec_img_hash = pipeline.nuclei_hash
-        if await redis.exists(keys.result_key(sec_img_hash)):
-            nucl_cache = await redis.get(keys.result_key(sec_img_hash))
+        if await redis.exists(redis_keys.result_key(sec_img_hash)):
+            nucl_cache = await redis.get(redis_keys.result_key(sec_img_hash))
 
     # Execute Pipeline
     pipeline._myosam_predictor.update_amg_config(config.amg_config)
@@ -271,18 +272,21 @@ async def run_inference(
 
     if myotube.filename and not myo_cache:
         background_tasks.add_task(
-            redis.set, keys.result_key(img_hash), myos.model_dump_json()
+            redis.set, redis_keys.result_key(img_hash), myos.model_dump_json()
         )
 
     if nuclei.filename and not nucl_cache:
         background_tasks.add_task(
-            redis.set, keys.result_key(sec_img_hash), nucls.model_dump_json()
+            redis.set,
+            redis_keys.result_key(sec_img_hash),
+            nucls.model_dump_json(),
         )
 
     # Overlay contours on main image
     img_drawn = pipeline.draw_contours_on_myotube_image(myos, nucls)
     path = get_fp(settings.images_dir)
     pipeline.save_myotube_image(path, img_drawn)
+
     return InferenceResponse(
         iamge_path=path,
         image_hash=img_hash if myotube.filename else None,
@@ -305,11 +309,10 @@ async def redis_status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
 async def adjust_unit(
     hash_str: str,
     mu: float,
-    keys: Annotated[REDIS_KEYS, Depends(REDIS_KEYS)],
     redis: Annotated[aioredis.Redis, Depends(setup_redis)],
 ):
     """Adjust unit of the metrics"""
-    objs = json.loads(await redis.get(keys.result_key(hash_str)))
+    objs = json.loads(await redis.get(redis_keys.result_key(hash_str)))
     if not objs["myo_objects"]:
         raise HTTPException(
             status_code=404, detail="myo_objects not found for the given hash."
@@ -319,5 +322,5 @@ async def adjust_unit(
     except ValidationError:
         objs = Nucleis.model_validate(objs)
     objs.adjust_measure_unit(mu)
-    await redis.set(keys.result_key(hash_str), objs.model_dump_json())
+    await redis.set(redis_keys.result_key(hash_str), objs.model_dump_json())
     return Response(status_code=200)
