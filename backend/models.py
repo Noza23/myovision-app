@@ -87,10 +87,14 @@ class Config(BaseModel):
     """Configuration for the pipeline."""
 
     amg_config: AmgConfig = Field(
-        description="Config for AMG algorithm.", default_factory=AmgConfig
+        description="Config for AMG algorithm.",
+        default_factory=AmgConfig,
+        title="AMG Config",
     )
     general_config: GeneralConfig = Field(
-        description="General Pipeline Config.", default_factory=GeneralConfig
+        description="General Pipeline Config.",
+        default_factory=GeneralConfig,
+        title="General Config",
     )
 
     @model_validator(mode="before")
