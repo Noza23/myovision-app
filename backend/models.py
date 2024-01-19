@@ -9,35 +9,66 @@ class AmgConfig(BaseModel):
     """The configuration of a AMG framework."""
 
     points_per_side: int = Field(
-        description="Number of points per side to sample.", default=64
+        description="Number of points per side", default=64, ge=1, step=5
     )
     points_per_batch: int = Field(
-        description="Number of points to predict per batch", default=64
+        description="Number of points per batch", default=64, ge=1, step=5
     )
     pred_iou_thresh: float = Field(
-        description="Threshold for predicted IoU", default=0.8
+        description="Threshold for predicted IoU",
+        default=0.8,
+        ge=0,
+        le=1,
+        step=0.05,
     )
     stability_score_thresh: float = Field(
-        description="Threshold for stability score", default=0.92
+        description="Threshold for stability score",
+        default=0.92,
+        ge=0,
+        le=1,
+        step=0.05,
     )
     stability_score_offset: float = Field(
-        description="Offset for stability score", default=1.0
+        description="Offset in computing stability score",
+        default=1.0,
+        ge=0,
+        step=0.05,
     )
-    box_nms_thresh: float = Field(description="NMS threshold", default=0.7)
+    box_nms_thresh: float = Field(
+        description="Threshold for filtering duplicates",
+        default=0.7,
+        ge=0,
+        le=1,
+        step=0.05,
+    )
     crop_n_layers: int = Field(
-        description="Number of layers to crop", default=1
+        description="Rerun algorithm on crops", default=1, ge=0, le=4, step=1
     )
     crop_nms_thresh: float = Field(
-        description="NMS threshold for cropping", default=0.7
+        description="NMS threshold for cropping",
+        default=0.7,
+        ge=0,
+        le=1,
+        step=0.05,
     )
     crop_overlap_ratio: float = Field(
-        description="Overlap ratio for cropping", default=512 / 1500
+        description="Overlap ratio in cropping",
+        default=0.34,
+        ge=0,
+        le=1,
+        step=0.05,
     )
     crop_n_points_downscale_factor: int = Field(
-        description="Downscale factor for cropping", default=2
+        description="Point downscale factor for cropping",
+        default=2,
+        ge=1,
+        step=1,
     )
     min_mask_region_area: int = Field(
-        description="Minimum area of mask region", default=100
+        description="Threshold for Minimum area of mask",
+        default=100,
+        ge=0,
+        step=50,
     )
 
 
@@ -45,7 +76,10 @@ class GeneralConfig(BaseModel):
     """General configuration for the pipeline."""
 
     measure_unit: float = Field(
-        description="The measure unit for the image.", default=1.0
+        description="The measure unit for the image",
+        default=1.0,
+        ge=0,
+        step=0.5,
     )
 
 
@@ -53,10 +87,10 @@ class Config(BaseModel):
     """Configuration for the pipeline."""
 
     amg_config: AmgConfig = Field(
-        description="Config for AMG algorithm.", default=AmgConfig()
+        description="Config for AMG algorithm.", default_factory=AmgConfig
     )
     general_config: GeneralConfig = Field(
-        description="General Pipeline Config.", default=GeneralConfig()
+        description="General Pipeline Config.", default_factory=GeneralConfig
     )
 
     @model_validator(mode="before")

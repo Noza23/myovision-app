@@ -92,9 +92,10 @@ async def get():
     return HTMLResponse(html)
 
 
-@app.get("/get_config/", response_model=Config)
-async def get_config():
+@app.get("/get_config_schema/", response_model=Config)
+async def get_config_schema():
     """Get the configuration of the pipeline."""
+    return Config(measure_unit=1.0).model_json_schema()["$defs"]
     return Config(measure_unit=1.0)
 
 
