@@ -6,7 +6,7 @@ import json
 
 
 class AmgConfig(BaseModel):
-    """The configuration of a AMG framework."""
+    """AMG configuration"""
 
     points_per_side: int = Field(
         description="Number of points per side", default=64, ge=1
@@ -67,7 +67,7 @@ class AmgConfig(BaseModel):
 
 
 class GeneralConfig(BaseModel):
-    """General configuration for the pipeline."""
+    """General configuration"""
 
     measure_unit: float = Field(
         description="The measure unit for the image", default=1.0, ge=0.0
