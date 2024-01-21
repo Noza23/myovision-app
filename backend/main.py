@@ -10,6 +10,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .models import Settings, REDIS_KEYS, Config, ValidationResponse, State
 from .base import MyoObjects
@@ -42,6 +43,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+_ = app.mount("/images", StaticFiles(directory="./images"), name="images")
 
 app.add_middleware(
     CORSMiddleware,
