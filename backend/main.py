@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import json
-from typing import Optional
 
 from fastapi import (
     FastAPI,
@@ -9,6 +8,7 @@ from fastapi import (
     UploadFile,
     WebSocket,
     WebSocketException,
+    File,
 )
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,9 +131,28 @@ async def run_validation(image: UploadFile, config: Config):
 
 @app.post("/inference/", response_model=InferenceResponse)
 async def run_inference(
-    image: UploadFile, image_secondary: Optional[UploadFile]
+    config: Config,
+    myotube: UploadFile = File(None),
+    nuclei: UploadFile = File(None),
 ):
-    pass
+    """Run the pipeline in inference mode."""
+    if not myotube.filename and not nuclei.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Either myotube or nuclei image must be provided.",
+        )
+    print("Recived config: ", config)
+    print("Recived myotube: ", myotube.filename)
+    print("Recived nuclei: ", nuclei.filename)
+    img_hash = redis_keys.result_key("fake_hash")
+    sec_img_hash = redis_keys.result_key("fake_sec_hash")
+    path = "images/inference.png"
+
+    return InferenceResponse(
+        iamge_path=path,
+        image_hash=img_hash if myotube.filename else None,
+        secondary_image_hash=sec_img_hash if nuclei.filename else None,
+    )
 
 
 @app.websocket("/validation/{hash_str}")
