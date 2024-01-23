@@ -185,9 +185,8 @@ async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
                 code=status.WS_1008_POLICY_VIOLATION,
                 reason="Invalid data received.",
             )
-        x, y = re.findall(pattern, data)[0]
-        x, y = int(x), int(y)
-        print("Recived data: ", "x: ", x, "y: ", y)
+        point = tuple(map(int, re.findall(pattern, data)[0]))
+        print("Recived data: ", "point: ", point)
 
 
 @app.websocket("/validation/{hash_str}")
