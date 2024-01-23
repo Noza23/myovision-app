@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 import json
+from typing import Optional
+
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -12,7 +14,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .models import Settings, REDIS_KEYS, Config, ValidationResponse, State
+from .models import (
+    Settings,
+    REDIS_KEYS,
+    Config,
+    ValidationResponse,
+    InferenceResponse,
+    State,
+)
 from .base import MyoObjects
 import random
 
@@ -118,6 +127,13 @@ async def run_validation(image: UploadFile, config: Config):
     fake_hash = redis_keys.result_key("fake_hash")
     path = "images/myotube.png"
     return ValidationResponse(image_hash=fake_hash, image_path=path)
+
+
+@app.post("/inference/", response_model=InferenceResponse)
+async def run_inference(
+    image: UploadFile, image_secondary: Optional[UploadFile]
+):
+    pass
 
 
 @app.websocket("/validation/{hash_str}")
