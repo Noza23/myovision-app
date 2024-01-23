@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import json
+import re
 
 from fastapi import (
     FastAPI,
@@ -23,6 +24,7 @@ from .models import (
     State,
 )
 from .base import MyoObjects
+from .information import InformationMetrics
 import random
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -149,10 +151,43 @@ async def run_inference(
     path = "images/inference.png"
 
     return InferenceResponse(
-        iamge_path=path,
+        image_path=path,
         image_hash=img_hash if myotube.filename else None,
         secondary_image_hash=sec_img_hash if nuclei.filename else None,
     )
+
+
+@app.wbsocket("/inference/{hash_str}/{sec_hash_str}")
+async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
+    """Websocket for inference mode."""
+
+    if not hash_str and not sec_hash_str:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hash string missing.",
+        )
+    pattern = r"\(\s*(\d+)\s*,\s*(\d+)\s*\)"
+    print("Websocket connection for inference openning")
+    print("Primary hash: ", hash_str)
+    print("Secondary hash: ", sec_hash_str)
+    await websocket.accept()
+    info_data = InformationMetrics.model_validate(
+        json.load(open("data/info_data.json"))
+    )
+    while True:
+        if len(info_data.myotubes) + len(info_data.nucleis) == 0:
+            break
+        # Wating for response from front (x, y)
+
+        data = await websocket.receive_text()
+        if not re.fullmatch(pattern, data):
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid data received.",
+            )
+        x, y = re.findall(pattern, data)[0]
+        x, y = int(x), int(y)
+        print("Recived data: ", "x: ", x, "y: ", y)
 
 
 @app.websocket("/validation/{hash_str}")
