@@ -123,6 +123,11 @@ async def run_validation(image: UploadFile, config: Config):
 @app.websocket("/validation/{hash_str}")
 async def validation_ws(websocket: WebSocket, hash_str: str):
     """Websocket for validation mode."""
+    if hash_str != redis_keys.result_key("fake_hash"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hash string not found.",
+        )
     print("Websocket connection openning")
     await websocket.accept()
     print(hash_str)
@@ -132,7 +137,7 @@ async def validation_ws(websocket: WebSocket, hash_str: str):
             detail="Hash string not found.",
         )
     mo = MyoObjects.model_validate(
-        json.load(open("data/info_data.json"))["nucleis"]
+        json.load(open("data/info_data.json"))["myotubes"]
     )
     state = State()
 
