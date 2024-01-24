@@ -174,6 +174,11 @@ async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
     info_data = InformationMetrics.model_validate(
         json.load(open("data/info_data.json"))
     )
+    myotubes = info_data.myotubes
+    nuclei_clusters = info_data.nuclei_clusters
+
+    # Initial websocket sends general information like total number area ...
+    # websockets awaits on (x, y) and sends back instance specific information
     while True:
         if len(info_data.myotubes) + len(info_data.nucleis) == 0:
             break
@@ -187,6 +192,20 @@ async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
             )
         point = tuple(map(int, re.findall(pattern, data)[0]))
         print("Recived data: ", "point: ", point)
+        # Find myotube instance
+        myo = myotubes.get_instance_by_point(point)
+        if myo:
+            clusts = nuclei_clusters.get_clusters_by_myotube_id(myo.identifier)
+            resp = {
+                "info_data": {
+                    "myotube": myo.model_dump_json(),
+                    "clusters": [clust.model_dump_json() for clust in clusts],
+                }
+            }
+        else:
+            resp = {"info_data": None}
+
+        await websocket.send_json(resp)
 
 
 @app.websocket("/validation/{hash_str}")
@@ -218,7 +237,7 @@ async def validation_ws(websocket: WebSocket, hash_str: str):
         {"roi_coords": mo[i].roi_coords, "contour_id": i}
     )
     while True:
-        if len(mo) == i:
+        if len(mo) == i - 1:
             state.done = True
             websocket.send_text("done")
         # Wating for response from front

@@ -219,6 +219,15 @@ class MyoObjects(BaseModel):
             myo_objects=[m for m in self.myo_objects if m.identifier in ids]
         )
 
+    def get_instance_by_point(
+        self, point: tuple[int, int]
+    ) -> Optional[MyoObject]:
+        """Gets the instance id by x, y coordinates."""
+        for myo in self.myo_objects:
+            if cv2.pointPolygonTest(myo.roi_coords_np, point, False) >= 0:
+                return myo
+        return None
+
     @property
     def reverse_mapping(self) -> dict[Optional[int], list[int]]:
         """Reverse mapping of the myoobjects to other myoobjects."""
@@ -395,6 +404,12 @@ class NucleiClusters(BaseModel):
 
     def __iter__(self):
         return iter(self.clusters)
+
+    def get_clusters_by_myotube_id(self, idx: int) -> "NucleiClusters":
+        """Gets the clusters by myotube id."""
+        return self.__class__(
+            clusters=[m for m in self.clusters if m.myotube_id == idx]
+        )
 
     @classmethod
     def compute_clusters(cls, nucleis: Nucleis) -> "NucleiClusters":
