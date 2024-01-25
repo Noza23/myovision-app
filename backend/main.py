@@ -138,22 +138,28 @@ async def run_inference(
     nuclei: UploadFile = File(None),
 ):
     """Run the pipeline in inference mode."""
-    if not myotube.filename and not nuclei.filename:
+    if not hasattr(myotube, "filename") and not hasattr(nuclei, "filename"):
         raise HTTPException(
             status_code=400,
             detail="Either myotube or nuclei image must be provided.",
         )
     print("Recived config: ", config)
-    print("Recived myotube: ", myotube.filename)
-    print("Recived nuclei: ", nuclei.filename)
+    if hasattr(myotube, "filename"):
+        print("Recived myotube: ", myotube.filename)
+    else:
+        print("No myotube provided")
+    if hasattr(nuclei, "filename"):
+        print("Recived nuclei: ", nuclei.filename)
+    else:
+        print("No nuclei provided")
     img_hash = redis_keys.result_key("fake_hash")
-    sec_img_hash = redis_keys.result_key("fake_sec_hash")
+    sec_hash = redis_keys.result_key("fake_sec_hash")
     path = "images/inference.png"
 
     return InferenceResponse(
         image_path=path,
-        image_hash=img_hash if myotube.filename else None,
-        secondary_image_hash=sec_img_hash if nuclei.filename else None,
+        image_hash=img_hash if hasattr(myotube, "filename") else None,
+        secondary_image_hash=sec_hash if hasattr(nuclei, "filename") else None,
     )
 
 
