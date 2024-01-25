@@ -243,7 +243,9 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     state = State()
 
     if state.done:
-        await websocket.send_text("done")
+        await websocket.close(reason="Validation done")
+        return
+
     i = state.get_next()
     # Starting Contour send on connection openning
     await websocket.send_json(
@@ -253,7 +255,8 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
         # len 1000
         if len(mo) == i + 1:
             state.done = True
-            websocket.send_text("done")
+            await websocket.close(reason="Validation done")
+
         # Wating for response from front
         data = int(await websocket.receive_text())
         # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
