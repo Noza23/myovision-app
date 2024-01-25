@@ -157,7 +157,7 @@ async def run_inference(
     )
 
 
-@app.wbsocket("/inference/{hash_str}/{sec_hash_str}")
+@app.websocket("/inference/{hash_str}/{sec_hash_str}")
 async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
     """Websocket for inference mode."""
 
