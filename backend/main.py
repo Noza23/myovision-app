@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 import json
-import re
+from typing import Optional
 
 from fastapi import (
     FastAPI,
@@ -11,9 +11,9 @@ from fastapi import (
     WebSocketException,
     File,
 )
-from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 
 from .models import (
     Settings,
@@ -22,6 +22,7 @@ from .models import (
     ValidationResponse,
     InferenceResponse,
     State,
+    Point,
 )
 from .base import MyoObjects
 from .information import InformationMetrics
@@ -34,7 +35,7 @@ origins = ["http://localhost:3000"]
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> None:
     """Lifespan of application."""
     print("Starting application")
     # Redis connection
@@ -81,7 +82,7 @@ html = """
         <ul id='messages'>
         </ul>
         <script>
-            var ws = new WebSocket("ws://localhost:8000/validation/myovision:image:fake_hash");
+            var ws = new WebSocket("ws://localhost:8000/inference/tt/null");
             ws.onmessage = function(event) {
                 var messages = document.getElementById('messages')
                 var message = document.createElement('li')
@@ -107,13 +108,13 @@ async def get():
 
 
 @app.get("/get_config_schema/")
-async def get_config_schema():
+async def get_config_schema() -> dict:
     """Get the configuration of the pipeline."""
     return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
 
 @app.get("/redis_status/")
-async def redis_status():
+async def redis_status() -> dict:
     """check status of the redis connection"""
     if random.randint(0, 1):
         return {"status": True}
@@ -134,45 +135,48 @@ async def run_validation(image: UploadFile, config: Config):
 @app.post("/inference/", response_model=InferenceResponse)
 async def run_inference(
     config: Config,
-    myotube: UploadFile = File(None),
-    nuclei: UploadFile = File(None),
+    image: UploadFile = File(None),
+    image_secondary: UploadFile = File(None),
 ):
     """Run the pipeline in inference mode."""
-    if not hasattr(myotube, "filename") and not hasattr(nuclei, "filename"):
+    if not hasattr(image, "filename") and not hasattr(image, "filename"):
         raise HTTPException(
             status_code=400,
             detail="Either myotube or nuclei image must be provided.",
         )
     print("Recived config: ", config)
-    if hasattr(myotube, "filename"):
-        print("Recived myotube: ", myotube.filename)
+    if hasattr(image, "filename"):
+        print("Recived myotube: ", image.filename)
+        img_hash = redis_keys.result_key("fake_hash")
     else:
         print("No myotube provided")
-    if hasattr(nuclei, "filename"):
-        print("Recived nuclei: ", nuclei.filename)
+        img_hash = None
+    if hasattr(image_secondary, "filename"):
+        print("Recived nuclei: ", image_secondary.filename)
+        image_secondary_hash = redis_keys.result_key("fake_sec_hash")
     else:
         print("No nuclei provided")
-    img_hash = redis_keys.result_key("fake_hash")
-    sec_hash = redis_keys.result_key("fake_sec_hash")
+        image_secondary_hash = None
     path = "images/inference.png"
 
     return InferenceResponse(
         image_path=path,
-        image_hash=img_hash if hasattr(myotube, "filename") else None,
-        secondary_image_hash=sec_hash if hasattr(nuclei, "filename") else None,
+        image_hash=img_hash,
+        image_secondary_hash=image_secondary_hash,
     )
 
 
 @app.websocket("/inference/{hash_str}/{sec_hash_str}")
-async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
+async def inference_ws(
+    websocket: WebSocket, hash_str: Optional[str], sec_hash_str: Optional[str]
+) -> None:
     """Websocket for inference mode."""
-
     if not hash_str and not sec_hash_str:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Hash string missing.",
         )
-    pattern = r"\(\s*(\d+)\s*,\s*(\d+)\s*\)"
+
     print("Websocket connection for inference openning")
     print("Primary hash: ", hash_str)
     print("Secondary hash: ", sec_hash_str)
@@ -186,20 +190,23 @@ async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
     # Initial websocket sends general information like total number area ...
     # websockets awaits on (x, y) and sends back instance specific information
     while True:
+        print("Entered")
         if len(info_data.myotubes) + len(info_data.nucleis) == 0:
+            print("No data to send")
             break
-        # Wating for response from front (x, y)
 
-        data = await websocket.receive_text()
-        if not re.fullmatch(pattern, data):
+        # Wating for response from front {x: int, y: int}
+        data = await websocket.receive_json()
+
+        try:
+            point = Point.model_validate(data)
+            print("Recived data: ", "point: ", point)
+        except ValueError:
             raise WebSocketException(
                 code=status.WS_1008_POLICY_VIOLATION,
                 reason="Invalid data received.",
             )
-        point = tuple(map(int, re.findall(pattern, data)[0]))
-        print("Recived data: ", "point: ", point)
-        # Find myotube instance
-        myo = myotubes.get_instance_by_point(point)
+        myo = myotubes.get_instance_by_point(point.to_tuple())
         if myo:
             clusts = nuclei_clusters.get_clusters_by_myotube_id(myo.identifier)
             resp = {
@@ -215,7 +222,7 @@ async def inference_ws(websocket: WebSocket, hash_str: str, sec_hash_str: str):
 
 
 @app.websocket("/validation/{hash_str}")
-async def validation_ws(websocket: WebSocket, hash_str: str):
+async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     """Websocket for validation mode."""
     if hash_str != redis_keys.result_key("fake_hash"):
         raise HTTPException(
@@ -243,7 +250,8 @@ async def validation_ws(websocket: WebSocket, hash_str: str):
         {"roi_coords": mo[i].roi_coords, "contour_id": i}
     )
     while True:
-        if len(mo) == i - 1:
+        # len 1000
+        if len(mo) == i + 1:
             state.done = True
             websocket.send_text("done")
         # Wating for response from front
@@ -269,7 +277,7 @@ async def validation_ws(websocket: WebSocket, hash_str: str):
             )
         # Send next contour
         step = data != 2 if data != -1 else -1
-        i += step
+        i = min(max(i + step, 0), len(mo) - 1)
         print("step: ", step)
         print("Sending next contour")
         await websocket.send_json(
