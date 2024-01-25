@@ -136,7 +136,7 @@ class InferenceResponse(BaseModel):
     image_hash: Union[str, None] = Field(
         description="The hash string of the image."
     )
-    secondary_image_hash: Union[str, None] = Field(
+    image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
 
@@ -158,3 +158,14 @@ class REDIS_KEYS:
     def state_key(self, hash_str: str) -> str:
         """A key for state."""
         return f"{self.prefix}:state:{hash_str}"
+
+
+class Point(BaseModel):
+    """A point on the image"""
+
+    x: int = Field(description="x coordinate of the point", ge=0)
+    y: int = Field(description="y coordinate of the point", ge=0)
+
+    def to_tuple(self) -> tuple[int, int]:
+        """Convert to tuple."""
+        return (self.x, self.y)
