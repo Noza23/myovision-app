@@ -215,10 +215,12 @@ async def inference_ws(
             clusts = nuclei_clusters.get_clusters_by_myotube_id(myo.identifier)
             resp = {
                 "info_data": {
-                    "myotube": myo.model_dump_json(),
-                    "clusters": [clust.model_dump_json() for clust in clusts],
+                    "myotube": myo.model_dump(),
+                    "clusters": [clust.model_dump() for clust in clusts],
                 }
             }
+
+            resp["info_data"]["myotube"].pop("roi_coords")
         else:
             resp = {"info_data": {"myotube": None, "clusters": None}}
 
