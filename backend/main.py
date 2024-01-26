@@ -186,7 +186,7 @@ async def inference_ws(
     print("Secondary hash: ", sec_hash_str)
     await websocket.accept()
     info_data = InformationMetrics.model_validate(
-        json.load(open("data/info_data.json"))
+        json.load(open("data/fe4_data.json"))
     )
     myotubes = info_data.myotubes
     nuclei_clusters = info_data.nuclei_clusters
