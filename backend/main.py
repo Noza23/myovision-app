@@ -237,7 +237,7 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     print("Websocket connection openning")
     await websocket.accept()
     print(hash_str)
-    mo_nm = hash_str.split("_")[0]
+    mo_nm = hash_str.split(":")[-1][:3]
     mo = MyoObjects.model_validate(
         json.load(open(f"data/{mo_nm}_data.json"))["myotubes"]
     )
