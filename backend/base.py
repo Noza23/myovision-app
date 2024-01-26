@@ -1,3 +1,4 @@
+from typing import Any
 from functools import cached_property
 from typing import Optional
 import math
@@ -6,7 +7,7 @@ from collections import defaultdict
 import itertools
 import networkx as nx
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 import cv2
 import numpy as np
 
@@ -25,14 +26,13 @@ class MyoObject(BaseModel):
     roi_coords: list[list[int]] = Field(description="ROI boundaries")  # (x, y)
     measure_unit: float = Field(description="Measure unit of the myoobject.")
 
-    def __str__(self):
-        return (
-            f"identifier: {self.identifier}\n"
-            f"measure_unit: {self.measure_unit}\n"
-            f"area: {self.area}\n"
-            f"perimeter: {self.perimeter}\n"
-            f"roundness: {self.roundness}\n"
-            f"elipse: {self.elipse}\n"
+    def __str__(self) -> str:
+        return "\n".join(
+            [
+                f"{k}: {v if not isinstance(v, float) else round(v, 2)}"
+                for k, v in self.model_dump().items()
+                if not k.startswith("roi_coords") and k != "rgb_repr"
+            ]
         )
 
     @cached_property
@@ -121,10 +121,67 @@ class MyoObject(BaseModel):
 class Myotube(MyoObject):
     pred_iou: Optional[float] = Field(description="Predicted IoU")
     stability: Optional[float] = Field(description="Stability")
-    rgb_repr: list[list[int]] = Field(description="RGB representation")
+    rgb_repr: list[list[int]] = Field(
+        description="RGB representation", exclude=True, default_factory=list
+    )
     nuclei_ids: list[Optional[int]] = Field(
         description="Nucleis inside instance", default_factory=list
     )
+    rgb_min: Optional[tuple] = Field(
+        description="Minimum intensity of the myotube per channel",
+        default_factory=tuple,
+    )
+    rgb_max: Optional[tuple] = Field(
+        description="Maximum intensity of the myotube per channel",
+        default_factory=tuple,
+    )
+    rgb_mean: Optional[tuple] = Field(
+        description="Mean intensity of the myotube per channel",
+        default_factory=tuple,
+    )
+    rgb_median: Optional[tuple] = Field(
+        description="Median intensity of the myotube per channel",
+        default_factory=tuple,
+    )
+    rgb_mode: Optional[tuple] = Field(
+        description="Mode intensity of the myotube per channel",
+        default_factory=tuple,
+    )
+    rgb_std: Optional[tuple] = Field(
+        description="Standard deviation of the myotube per channel",
+        default_factory=tuple,
+    )
+    integrated_density_rgb: Optional[tuple] = Field(
+        description="Integrated density of the myotube per channel",
+        default_factory=tuple,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_rgb_metrics(cls, values: Any) -> Any:
+        """
+        Sets the rgb metrics only on the initialisation afterwards we drop
+        large rgb_repr lists to save on disk space.
+        """
+        if not isinstance(values, dict):
+            if issubclass(values, BaseModel):
+                values = values.model_dump()
+            else:
+                return values
+        rgb_r = values.get("rgb_repr")
+        if rgb_r:
+            values["rgb_min"] = tuple(min(c) for c in zip(*rgb_r))
+            values["rgb_max"] = tuple(max(c) for c in zip(*rgb_r))
+            values["rgb_mean"] = tuple(statistics.mean(c) for c in zip(*rgb_r))
+            values["rgb_median"] = tuple(
+                statistics.median(c) for c in zip(*rgb_r)
+            )
+            values["rgb_mode"] = tuple(statistics.mode(c) for c in zip(*rgb_r))
+            values["rgb_std"] = tuple(statistics.stdev(c) for c in zip(*rgb_r))
+            values["integrated_density_rgb"] = tuple(
+                sum(c) for c in zip(*rgb_r)
+            )
+        return values
 
     @computed_field  # type: ignore[misc]
     @property
@@ -137,48 +194,6 @@ class Myotube(MyoObject):
     def centroid(self) -> tuple[float, float]:
         """Centroid of the myoobject. (x, y)"""
         return self.elipse[0]
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_min(self) -> tuple:
-        """Minimum intensity of the myotube per channel."""
-        return tuple(min(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_max(self) -> tuple:
-        """Maximum intensity of the myotube per channel."""
-        return tuple(max(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_mean(self) -> tuple:
-        """Mean intensity of the myotube per channel."""
-        return tuple(statistics.mean(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_median(self) -> tuple:
-        """Median intensity of the myotube per channel."""
-        return tuple(statistics.median(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_mode(self) -> tuple:
-        """Mode intensity of the myotube per channel."""
-        return tuple(statistics.mode(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def rgb_std(self) -> tuple:
-        """Standard deviation of the myotube per channel."""
-        return tuple(statistics.stdev(c) for c in zip(*self.rgb_repr))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def integrated_density_rgb(self) -> tuple:
-        """Integrated density of the myotube per channel."""
-        return tuple(sum(c) for c in zip(*self.rgb_repr))
 
 
 class Nuclei(MyoObject):
@@ -202,6 +217,7 @@ class MyoObjects(BaseModel):
     mapping: dict[int, list[Optional[int]]] = Field(
         description="Mapping of the myoobjects to other myoobjects.",
         default_factory=defaultdict,
+        exclude=True,
     )
 
     def adjust_measure_unit(self, measure_unit: float) -> None:
@@ -237,8 +253,8 @@ class MyoObjects(BaseModel):
                 reverse_mapping[myo_id_].append(myo_id)
         return reverse_mapping
 
-    def __str__(self):
-        return f"num_objects: {len(self.myo_objects)}" f"area: {self.area}"
+    def __str__(self) -> str:
+        return "area_total: {:.2f}".format(self.area)
 
     @property
     def area(self) -> float:
@@ -312,6 +328,19 @@ class Nucleis(MyoObjects):
     def total_fusion_index(self):
         return self.num_nuclei_inside_myotubes / self.num_myoblasts
 
+    def __str__(self) -> str:
+        return "\n".join(
+            [
+                "num_myoblasts: {}".format(self.num_myoblasts),
+                "myoblasts_area: {:.2f}".format(self.myoblasts_area),
+                "num_nucleis: {}".format(self.num_nuclei_inside_myotubes),
+                "nucleis_area: {:.2f}".format(
+                    self.nucleis_inside_myotubes_area
+                ),
+                "fusion_index: {:.2f}".format(self.total_fusion_index),
+            ]
+        )
+
     @classmethod
     def parse_nucleis(
         cls,
@@ -371,21 +400,16 @@ class NucleiCluster(MyoObjects):
 
     cluster_id: str = Field(description="Cluster identifier")
     myotube_id: int = Field(description="Myotube identifier")
-    myo_objects: list[Nuclei] = Field(description="List of nucleis.")
-
-    def __str__(self):
-        return (
-            f"cluster_id: {self.cluster_id}\n"
-            f"myotube_id: {self.myotube_id}\n"
-            f"num_nuclei: {self.num_nuclei}\n"
-            f"area: {self.area}\n"
-        )
+    nuclei_ids: list[int] = Field(description="Nuclei identifiers")
+    myo_objects: list[Nuclei] = Field(
+        description="List of nucleis.", exclude=True, default_factory=list
+    )
 
     @computed_field  # type: ignore[misc]
     @property
     def num_nuclei(self) -> int:
         """Number of nuclei."""
-        return len(self.myo_objects)
+        return len(self.nuclei_ids)
 
 
 class NucleiClusters(BaseModel):
@@ -393,7 +417,7 @@ class NucleiClusters(BaseModel):
 
     clusters: list[NucleiCluster] = Field(description="List of clusters.")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"num_clusters: {len(self.clusters)}"
 
     def __len__(self) -> int:
@@ -441,11 +465,11 @@ class NucleiClusters(BaseModel):
             ]
             for i, cluster in enumerate(clusters):
                 cluster_id = str(myo_id) + "_" + str(i)
-                myo_objects = [nucleis[nucleis_ids[i]] for i in cluster]
+                nuclei_ids = [nucleis_ids[i] for i in cluster]
                 clust = NucleiCluster(
                     cluster_id=cluster_id,
                     myotube_id=myo_id,
-                    myo_objects=myo_objects,
+                    nuclei_ids=nuclei_ids,
                 )
                 nuclei_clusters.append(clust)
         return cls(clusters=nuclei_clusters)

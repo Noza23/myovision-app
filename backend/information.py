@@ -11,10 +11,12 @@ class InformationMetrics(BaseModel):
     nuclei_clusters: NucleiClusters = Field(description="nuclei clusters.")
 
     def __str__(self) -> str:
-        return (
-            f"Total Myotubes: {self.total_myotubes}\n"
-            f"Total Nuclei: {self.total_nucleis}\n"
-            f"Total Nuclei Clusters: {self.total_nuclei_clusters}\n"
+        return "\n".join(
+            [
+                f"{k}: {v if not isinstance(v, float) else round(v, 2)}"
+                for k, v in self.model_dump().items()
+                if k not in ["myotubes", "nucleis", "nuclei_clusters"]
+            ]
         )
 
     def adjust_measure_unit(self, mu: float) -> None:
@@ -45,12 +47,6 @@ class InformationMetrics(BaseModel):
     def total_nuclei_inside_myotubes(self) -> int:
         """The total number of nuclei inside myotubes."""
         return self.nucleis.num_nuclei_inside_myotubes
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def total_nuclei_clusters(self) -> int:
-        """The total number of nuclei clusters."""
-        return len(self.nuclei_clusters)
 
     @computed_field  # type: ignore[misc]
     @property
