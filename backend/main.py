@@ -226,19 +226,15 @@ async def inference_ws(
 @app.websocket("/validation/{hash_str}")
 async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     """Websocket for validation mode."""
-    if hash_str != redis_keys.result_key("fake_hash"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hash string not found.",
-        )
+
+    # if hash_str != redis_keys.result_key("fake_hash"):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND,
+    #         detail="Hash string not found.",
+    #     )
     print("Websocket connection openning")
     await websocket.accept()
     print(hash_str)
-    if hash_str != redis_keys.result_key("fake_hash"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hash string not found.",
-        )
     mo_nm = hash_str.split("_")[0]
     mo = MyoObjects.model_validate(
         json.load(open(f"data/{mo_nm}_data.json"))["myotubes"]
