@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import json
+import os
 from typing import Optional
 
 from fastapi import (
@@ -35,7 +36,7 @@ origins = ["http://localhost:3000"]
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> None:
+async def lifespan(app: FastAPI):
     """Lifespan of application."""
     print("Starting application")
     # Redis connection
@@ -127,8 +128,9 @@ async def run_validation(image: UploadFile, config: Config):
     """Run the pipeline in validation mode."""
     print("Recived image: ", image.filename)
     print("Recived config: ", config)
-    fake_hash = redis_keys.result_key("fake_hash")
-    path = "images/myotube.png"
+    img_names = os.listdir("images/")
+    path = random.choice(img_names)
+    fake_hash = redis_keys.result_key(path)
     return ValidationResponse(image_hash=fake_hash, image_path=path)
 
 
@@ -216,7 +218,7 @@ async def inference_ws(
                 }
             }
         else:
-            resp = {"info_data": None}
+            resp = {"info_data": {"myotube": None, "clusters": None}}
 
         await websocket.send_json(resp)
 
@@ -237,8 +239,9 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Hash string not found.",
         )
+    mo_nm = hash_str.split("_")[0]
     mo = MyoObjects.model_validate(
-        json.load(open("data/info_data.json"))["myotubes"]
+        json.load(open(f"data/{mo_nm}_data.json"))["myotubes"]
     )
     state = State()
 
