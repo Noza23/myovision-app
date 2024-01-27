@@ -129,7 +129,10 @@ async def run_validation(image: UploadFile, config: Config):
     print("Recived image: ", image.filename)
     print("Recived config: ", config)
     img_names = os.listdir("images/")
-    img_names.remove("inference.png")
+
+    img_names = [
+        x for x in img_names if x.endswith(".png") and x != "inference.png"
+    ]
     choice = random.choice(img_names)
     path = "images/" + choice
     fake_hash = redis_keys.result_key(choice.split(".")[0])
