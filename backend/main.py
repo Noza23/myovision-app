@@ -25,9 +25,11 @@ from .models import (
     State,
     Point,
 )
+from .utils import preprocess_ws_resp
 from .base import MyoObjects
 from .information import InformationMetrics
 import random
+
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 # pipeline: Pipeline = None
@@ -146,7 +148,9 @@ async def run_inference(
     image_secondary: UploadFile = File(None),
 ):
     """Run the pipeline in inference mode."""
-    if not hasattr(image, "filename") and not hasattr(image, "filename"):
+    if not hasattr(image, "filename") and not hasattr(
+        image_secondary, "filename"
+    ):
         raise HTTPException(
             status_code=400,
             detail="Either myotube or nuclei image must be provided.",
@@ -218,12 +222,10 @@ async def inference_ws(
             clusts = nuclei_clusters.get_clusters_by_myotube_id(myo.identifier)
             resp = {
                 "info_data": {
-                    "myotube": myo.model_dump(),
+                    "myotube": preprocess_ws_resp(myo.model_dump()),
                     "clusters": [clust.model_dump() for clust in clusts],
                 }
             }
-
-            resp["info_data"]["myotube"].pop("roi_coords")
         else:
             resp = {"info_data": {"myotube": None, "clusters": None}}
 

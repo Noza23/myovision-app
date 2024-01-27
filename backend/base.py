@@ -358,7 +358,6 @@ class Nucleis(MyoObjects):
             probs (np.array): (N, ) array of probabilities.
             myotubes (Myotubes): The myotubes.
         """
-        # np.flip(myoblast_rois.transpose(0, 2, 1), axis=2).astype(np.uint16)
         mapp = defaultdict(list)
         mapp_reverse = defaultdict(list)
         for myotube in myotubes:
@@ -391,7 +390,6 @@ class Nucleis(MyoObjects):
             )
             for i, coords in enumerate(roi_coords)
         ]
-        myotubes.add_mapping(mapp_reverse)
         return cls(myo_objects=nucleis, mapping=mapp)
 
 
