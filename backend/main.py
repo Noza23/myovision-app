@@ -20,7 +20,7 @@ from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
 from myo_sam.inference.models.base import Myotubes, MyoObjects
-from myo_sam.inference.utils import hash_bytes
+from myo_sam.inference.predictors.utils import invert_image
 
 from .models import (
     Settings,
@@ -62,7 +62,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
-_ = app.mount("/images", StaticFiles(directory="./images"), name="images")
+_ = app.mount(
+    "/images", StaticFiles(directory=settings.images_dir), name="images"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -150,10 +152,6 @@ async def run_validation(
         state = State.model_validate_json(
             await redis.get(redis_keys.state_key(img_hash))
         )
-        img_drawn = pipeline.draw_contours_on_myotube_image(
-            myos.filter_by_ids(state.valid), thickness=2
-        )
-
     else:
         # Case when image is not cached
         state = State()
@@ -168,8 +166,14 @@ async def run_validation(
             },
         )
 
-    path = get_fp(settings.images_dir)
-    pipeline.save_myotube_image(path, img_drawn)
+    if config.general_config.invert_image:
+        pipeline.set_myotube_image(invert_image(pipeline.myotube_image_np))
+    if state.get_next() != 0:
+        img_to_send = pipeline.draw_contours_on_myotube_image(myos)
+    else:
+        img_to_send = pipeline.myotube_image_np
+    path = get_fp(settings.images_dir, img_to_send)
+    pipeline.save_image(path, img_to_send)
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
 
