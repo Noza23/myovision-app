@@ -198,13 +198,25 @@ async def validation_ws(
     i = state.get_next()
 
     await websocket.send_json(
-        {"roi_coords": mo[i].roi_coords, "contour_id": i, "total": len(mo)}
+        {
+            "roi_coords": mo[i].roi_coords,
+            "contour_id": i,
+            "total": len(mo),
+            "done": state.done,
+        }
     )
 
     while True:
         if len(mo) == i + 1:
             state.done = True
-            websocket.send_text("done")
+            websocket.send_json(
+                {
+                    "roi_coords": None,
+                    "contour_id": i,
+                    "total": len(mo),
+                    "done": state.done,
+                }
+            )
         else:
             # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
             data = int(await websocket.receive_text())
@@ -241,6 +253,7 @@ async def validation_ws(
                     "roi_coords": mo[i].roi_coords,
                     "contour_id": i,
                     "total": len(mo),
+                    "done": state.done,
                 }
             )
 
