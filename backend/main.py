@@ -210,6 +210,11 @@ async def validation_ws(
                 state.valid.add(i)
             elif data == 2:
                 _ = mo.move_object_to_end(i)
+                background_tasks.add_task(
+                    redis.set,
+                    redis_keys.result_key(hash_str),
+                    mo.model_dump_json(),
+                )
             elif data == -1:
                 state.valid.discard(i)
                 state.invalid.discard(i)
@@ -218,6 +223,12 @@ async def validation_ws(
                     code=status.WS_1008_POLICY_VIOLATION,
                     reason="Invalid data received.",
                 )
+            background_tasks.add_task(
+                redis.set,
+                redis_keys.state_key(hash_str),
+                state.model_dump_json(),
+            )
+
             # Send next contour
             step = data != 2 if data != -1 else -1
             i = min(max(i + step, 0), len(mo) - 1)
