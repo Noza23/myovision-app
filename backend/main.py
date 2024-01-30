@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Union
 import json
 
 from fastapi import (
@@ -14,12 +14,11 @@ from fastapi import (
     WebSocketException,
     status,
 )
-from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Nucleis, Myotubes, MyoObjects
+from myo_sam.inference.models.base import Myotubes, MyoObjects
 from myo_sam.inference.utils import hash_bytes
 
 from .models import (
@@ -31,7 +30,6 @@ from .models import (
     InferenceResponse,
 )
 from .utils import get_fp
-from pydantic import ValidationError
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -43,21 +41,23 @@ origins = ["http://localhost:3000"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    print("Starting application")
-    # Redis connection
-    print("Connecting to redis")
-    # redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-    # Loading models
-    print("Loading models")
+    print("> Starting Application...")
+
+    print("> Starting Redis...")
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+
+    print("> Loading models...")
     global pipeline
     pipeline = Pipeline()
-    # pipeline._stardist_predictor.set_model(settings.stardist_model)
-    # pipeline._myosam_predictor.set_model(settings.myosam_model)
+    pipeline._stardist_predictor.set_model(settings.stardist_model)
+    pipeline._myosam_predictor.set_model(settings.myosam_model)
     yield
-    # Clean up and closing redis
+
+    print("> Shutting down...")
     del pipeline
-    # await redis.close()
-    print("Stopping application")
+    if redis:
+        await redis.flushall()
+        await redis.close()
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
@@ -77,12 +77,13 @@ def get_pipeline_instance() -> Pipeline:
 
 
 @lru_cache  # Work on single connection
-def setup_redis() -> aioredis.Redis:
+def setup_redis() -> Union[aioredis.Redis, None]:
     """Redis connection is single and shared across all users."""
     try:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     except Exception as e:
         print(f"Failed establishing connection to redis: {e}")
+        redis = None
     return redis
 
 
@@ -93,10 +94,25 @@ async def clear_path_cache(redis: aioredis.Redis) -> None:
         await redis.delete(*keys)
 
 
-@app.get("/get_config/", response_model=Config)
-def get_config():
+@app.get("/redis_status/")
+async def redis_status(
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+):
+    """check status of the redis connection"""
+    if not redis:
+        return {"status": False}
+    try:
+        status = await redis.ping()
+        return {"status": status}
+    except Exception as e:
+        print(f"Failed establishing connection to redis: {e}")
+        return {"status": False}
+
+
+@app.get("/get_config_schema/")
+async def get_config_schema() -> dict:
     """Get the configuration of the pipeline."""
-    return Config()
+    return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
 
 @app.post("/validation/", response_model=ValidationResponse)
@@ -292,35 +308,3 @@ async def run_inference(
         image_hash=img_hash if myotube.filename else None,
         secondary_image_hash=sec_img_hash if nuclei.filename else None,
     )
-
-
-@app.get("/redis_status/")
-async def redis_status(redis: Annotated[aioredis.Redis, Depends(setup_redis)]):
-    """check status of the redis connection"""
-    try:
-        status = await redis.ping()
-        return {"status": status}
-    except Exception as e:
-        print(f"Failed establishing connection to redis: {e}")
-        return {"status": False}
-
-
-@app.get("/adjust_unit/{hash_str}/{mu}")
-async def adjust_unit(
-    hash_str: str,
-    mu: float,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
-):
-    """Adjust unit of the metrics"""
-    objs = json.loads(await redis.get(redis_keys.result_key(hash_str)))
-    if not objs["myo_objects"]:
-        raise HTTPException(
-            status_code=404, detail="myo_objects not found for the given hash."
-        )
-    try:
-        objs = Myotubes.model_validate(objs)
-    except ValidationError:
-        objs = Nucleis.model_validate(objs)
-    objs.adjust_measure_unit(mu)
-    await redis.set(redis_keys.result_key(hash_str), objs.model_dump_json())
-    return Response(status_code=200)
