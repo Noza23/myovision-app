@@ -11,7 +11,11 @@ class GeneralConfig(BaseModel):
     """General configuration for the pipeline."""
 
     measure_unit: float = Field(
-        description="The measure unit for the image.", default=1.0
+        description="The measure unit for the image", default=1.0, ge=0.0
+    )
+    invert_image: bool = Field(
+        description="Whether to invert the image (for visualization only)",
+        default=False,
     )
 
 
@@ -19,10 +23,14 @@ class Config(BaseModel):
     """Configuration for the pipeline."""
 
     amg_config: AmgConfig = Field(
-        description="Config for AMG algorithm.", default=AmgConfig()
+        description="Config for AMG algorithm.",
+        default_factory=AmgConfig,
+        title="AMG Config",
     )
     general_config: GeneralConfig = Field(
-        description="General Pipeline Config.", default=GeneralConfig()
+        description="General Pipeline Config.",
+        default_factory=GeneralConfig,
+        title="General Config",
     )
 
     @model_validator(mode="before")
@@ -45,8 +53,10 @@ class Settings(BaseSettings):
 class State(BaseModel):
     """Validation state."""
 
-    valid: set[int] = Field(description="valid contours.", default=[])
-    invalid: set[int] = Field(description="invalid contours.", default=[])
+    valid: set[int] = Field(description="valid contours.", default_factory=set)
+    invalid: set[int] = Field(
+        description="invalid contours.", default_factory=set
+    )
     done: bool = Field(description="validation done.", default=False)
 
     def get_next(self) -> int:
@@ -71,7 +81,7 @@ class InferenceResponse(BaseModel):
     image_hash: Union[str, None] = Field(
         description="The hash string of the image."
     )
-    secondary_image_hash: Union[str, None] = Field(
+    image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
 
@@ -93,3 +103,14 @@ class REDIS_KEYS:
     def state_key(self, hash_str: str) -> str:
         """A key for state."""
         return f"{self.prefix}:state:{hash_str}"
+
+
+class Point(BaseModel):
+    """A point on the image"""
+
+    x: int = Field(description="x coordinate of the point", ge=0)
+    y: int = Field(description="y coordinate of the point", ge=0)
+
+    def to_tuple(self) -> tuple[int, int]:
+        """Convert to tuple."""
+        return (self.x, self.y)
