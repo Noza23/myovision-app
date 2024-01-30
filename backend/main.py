@@ -89,11 +89,11 @@ def setup_redis() -> Union[aioredis.Redis, None]:
     return redis
 
 
-async def clear_path_cache(redis: aioredis.Redis) -> None:
-    """clear cache for all paths"""
-    keys = await redis.keys(redis_keys.image_path_key("*"))
-    if keys:
-        await redis.delete(*keys)
+# async def clear_path_cache(redis: aioredis.Redis) -> None:
+#     """clear cache for all paths"""
+#     keys = await redis.keys(redis_keys.image_path_key("*"))
+#     if keys:
+#         await redis.delete(*keys)
 
 
 @app.get("/redis_status/")
@@ -122,12 +122,19 @@ async def run_validation(
     image: UploadFile,
     config: Config,
     background_tasks: BackgroundTasks,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
 ):
     """Run the pipeline in validation mode."""
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
+
+    if any(pipeline.myotube_image_np.shape > 2048):
+        print("> Image is too large, cropping to 2048x2048")
+        pipeline.set_myotube_image(
+            pipeline.myotube_image_np[:2048, :2048, :],
+            image.filename,
+        )
     img_hash = pipeline.myotube_hash
 
     if await redis.exists(redis_keys.result_key(img_hash)):
@@ -135,52 +142,35 @@ async def run_validation(
         myos = Myotubes.model_validate_json(
             await redis.get(redis_keys.result_key(img_hash))
         )
-        if not myos:
-            raise HTTPException(
-                status_code=404,
-                detail="myotubes not found for the given hash.",
-            )
-
         if myos[0].measure_unit != config.general_config.measure_unit:
             myos.adjust_measure_unit(config.general_config.measure_unit)
             await redis.set(
                 redis_keys.result_key(img_hash), myos.model_dump_json()
             )
-
         state = State.model_validate_json(
             await redis.get(redis_keys.state_key(img_hash))
         )
         img_drawn = pipeline.draw_contours_on_myotube_image(
             myos.filter_by_ids(state.valid), thickness=2
         )
-        img_drawn_hash = hash_bytes(img_drawn)
-        path = await redis.get(redis_keys.image_path_key(img_drawn_hash))
-        if not path:
-            # path might be cleaned by regular image cleaning
-            path = get_fp(settings.images_dir)
-            pipeline.save_myotube_image(path, img_drawn)
-            background_tasks.add_task(
-                redis.set, redis_keys.image_path_key(img_drawn_hash), path
-            )
+
     else:
         # Case when image is not cached
         state = State()
         pipeline._myosam_predictor.update_amg_config(config.amg_config)
         pipeline.set_measure_unit(config.general_config.measure_unit)
         myos = pipeline.execute().information_metrics.myotubes
-        path = get_fp(settings.images_dir)
-        pipeline.save_myotube_image(path)
-
         background_tasks.add_task(
             redis.mset,
             {
                 redis_keys.result_key(img_hash): myos.model_dump_json(),
-                redis_keys.image_path_key(img_hash): path,
                 redis_keys.state_key(img_hash): state.model_dump_json(),
             },
         )
 
-    return ValidationResponse(hash_str=img_hash, image_path=path)
+    path = get_fp(settings.images_dir)
+    pipeline.save_myotube_image(path, img_drawn)
+    return ValidationResponse(image_hash=img_hash, image_path=path)
 
 
 @app.websocket("/validation/{hash_str}/")
