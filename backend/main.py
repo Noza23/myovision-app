@@ -173,7 +173,7 @@ async def run_validation(
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
 
-@app.websocket("/validation/{hash_str}/")
+@app.websocket("/validation/{hash_str}")
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
@@ -182,58 +182,52 @@ async def validation_ws(
 ):
     """Websocket for validation mode."""
     await websocket.accept()
+
     mo = MyoObjects.model_validate_json(
         await redis.get(redis_keys.result_key(hash_str))
     )
     state = State.model_validate_json(
         await redis.get(redis_keys.state_key(hash_str))
     )
-
     if state.done:
         await websocket.send_text("done")
     i = state.get_next()
-    # Starting Contour send on connection openning
+
     await websocket.send_json(
-        {"roi_coords": mo[i].roi_coords, "contour_id": i}
+        {"roi_coords": mo[i].roi_coords, "contour_id": i, "total": len(mo)}
     )
+
     while True:
-        if len(mo) == i:
+        if len(mo) == i + 1:
             state.done = True
             websocket.send_text("done")
-        # Wating for response from front
-        data = int(await websocket.receive_text())
-        # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
-        assert data in (0, 1, 2, -1)
-        if data == 0:
-            # Invalid contour
-            state.invalid.add(i)
-        elif data == 1:
-            # Valid contour
-            state.valid.add(i)
-        elif data == 2:
-            # Skip contour: move to end and recache result
-            _ = mo.move_object_to_end(i)
-            await redis.set(
-                redis_keys.result_key(hash_str), mo.model_dump_json()
-            )
-        elif data == -1:
-            # Undo contour
-            state.valid.discard(i)
-            state.invalid.discard(i)
         else:
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Invalid data received.",
+            # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
+            data = int(await websocket.receive_text())
+            if data == 0:
+                state.invalid.add(i)
+            elif data == 1:
+                state.valid.add(i)
+            elif data == 2:
+                _ = mo.move_object_to_end(i)
+            elif data == -1:
+                state.valid.discard(i)
+                state.invalid.discard(i)
+            else:
+                raise WebSocketException(
+                    code=status.WS_1008_POLICY_VIOLATION,
+                    reason="Invalid data received.",
+                )
+            # Send next contour
+            step = data != 2 if data != -1 else -1
+            i = min(max(i + step, 0), len(mo) - 1)
+            await websocket.send_json(
+                {
+                    "roi_coords": mo[i].roi_coords,
+                    "contour_id": i,
+                    "total": len(mo),
+                }
             )
-        # Update state in cache
-        background_tasks.add_task(
-            redis.set, redis_keys.state_key(hash_str), state.model_dump_json()
-        )
-        # Send next contour
-        step = data != 2 if data != -1 else -1
-        await websocket.send_json(
-            {"roi_coords": mo[i + step].roi_coords, "contour_id": i + step}
-        )
 
 
 @app.post("/inference/", response_model=InferenceResponse)
