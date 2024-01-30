@@ -194,15 +194,22 @@ async def validation_ws(
         await redis.get(redis_keys.state_key(hash_str))
     )
     if state.done:
-        await websocket.send_text("done")
-    i = state.get_next()
+        await websocket.send_json(
+            {
+                "roi_coords": None,
+                "contour_id": len(mo),
+                "total": len(mo),
+            }
+        )
+        await websocket.close()
+        return
 
+    i = state.get_next()
     await websocket.send_json(
         {
             "roi_coords": mo[i].roi_coords,
-            "contour_id": i,
+            "contour_id": i + 1,
             "total": len(mo),
-            "done": state.done,
         }
     )
 
@@ -212,11 +219,18 @@ async def validation_ws(
             websocket.send_json(
                 {
                     "roi_coords": None,
-                    "contour_id": i,
+                    "contour_id": i + 1,
                     "total": len(mo),
-                    "done": state.done,
                 }
             )
+            background_tasks.add_task(
+                redis.set,
+                redis_keys.state_key(hash_str),
+                state.model_dump_json(),
+            )
+            await websocket.close()
+            break
+
         else:
             # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
             data = int(await websocket.receive_text())
@@ -251,9 +265,8 @@ async def validation_ws(
             await websocket.send_json(
                 {
                     "roi_coords": mo[i].roi_coords,
-                    "contour_id": i,
+                    "contour_id": i + 1,
                     "total": len(mo),
-                    "done": state.done,
                 }
             )
 
