@@ -1,6 +1,6 @@
 from typing import Any
 from functools import cached_property
-from typing import Optional
+from typing import Optional, overload, Union
 import math
 import statistics
 from collections import defaultdict
@@ -121,6 +121,9 @@ class MyoObject(BaseModel):
 class Myotube(MyoObject):
     pred_iou: Optional[float] = Field(description="Predicted IoU")
     stability: Optional[float] = Field(description="Stability")
+    is_on_edge: Optional[bool] = Field(
+        default=None, description="Is myotube on edge"
+    )
     rgb_repr: list[list[int]] = Field(
         description="RGB representation", exclude=True, default_factory=list
     )
@@ -200,12 +203,16 @@ class Nuclei(MyoObject):
     """A detected nuclei."""
 
     myotube_ids: list[Optional[int]] = Field(
-        description="Identifer of the myotubes the nuclei belongs to."
+        description="Identifer of the myotubes the nuclei belongs to.",
+        default_factory=list,
     )
-    centroid: tuple[float, float] = Field(
-        description="Centroid of the nuclei. (x, y)"
+    centroid: Optional[tuple[float, float]] = Field(
+        description="Centroid of the nuclei. (x, y)", default_factory=tuple
     )
-    prob: Optional[float] = Field(description="Probability of the nuclei pred")
+    prob: Optional[float] = Field(
+        description="Probability of the nuclei pred",
+        default_factory=float,
+    )
 
 
 class MyoObjects(BaseModel):
@@ -244,6 +251,23 @@ class MyoObjects(BaseModel):
                 return myo
         return None
 
+    def add_instances_from_coords(self, coords: list[np.ndarray]) -> None:
+        """Adds an instance to the myoobjects."""
+        if self.myo_objects:
+            last_id = max([m.identifier for m in self.myo_objects])
+            mu = self.myo_objects[0].measure_unit
+        else:
+            last_id = 0
+            mu = 1
+        for i, coord in enumerate(coords, start=1):
+            self.myo_objects.append(
+                MyoObject(
+                    identifier=last_id + i,
+                    roi_coords=coord.squeeze().tolist(),
+                    measure_unit=mu,
+                )
+            )
+
     @property
     def reverse_mapping(self) -> dict[Optional[int], list[int]]:
         """Reverse mapping of the myoobjects to other myoobjects."""
@@ -268,7 +292,17 @@ class MyoObjects(BaseModel):
     def __len__(self) -> int:
         return len(self.myo_objects)
 
+    @overload
+    def __getitem__(self, idx: slice) -> "MyoObjects":
+        ...
+
+    @overload
     def __getitem__(self, idx: int) -> MyoObject:
+        ...
+
+    def __getitem__(
+        self, idx: Union[int, slice]
+    ) -> Union[MyoObject, "MyoObjects"]:
         if isinstance(idx, slice):
             return self.__class__(myo_objects=self.myo_objects[idx])
         return self.myo_objects[idx]

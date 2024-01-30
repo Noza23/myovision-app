@@ -208,16 +208,15 @@ async def upload_contours(file: UploadFile = File(...)):
     for _, roi in rois_myotubes.items():
         coords = np.round(np.stack((roi["x"], roi["y"]), axis=1)).astype(
             np.int32
-        )[:, None, :]
+        )
         coords_lst.append(coords)
     if not coords_lst:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No contours found.",
         )
-    print(coords[0].shape)
-    coors = [x.tolist() for x in coords_lst[:4]]
-    return {"batched_coords": coors}
+    coords = [x.tolist() for x in coords_lst[:4]]
+    return {"batched_coords": coords}
 
 
 @app.websocket("/inference/{hash_str}/{sec_hash_str}")
