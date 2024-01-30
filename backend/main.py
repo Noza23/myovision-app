@@ -139,6 +139,10 @@ async def run_validation(
         )
     img_hash = pipeline.myotube_hash
 
+    img_to_send = pipeline.myotube_image_np.copy()
+    if config.general_config.invert_image:
+        img_to_send = invert_image(img_to_send)
+
     if await redis.exists(redis_keys.result_key(img_hash)):
         # Case when image is cached
         myos = Myotubes.model_validate_json(
@@ -152,6 +156,11 @@ async def run_validation(
         state = State.model_validate_json(
             await redis.get(redis_keys.state_key(img_hash))
         )
+        if state.valid:
+            img_to_send = pipeline.draw_contours(
+                img_to_send,
+                [myos[i].roi_coords for i in state.valid],
+            )
     else:
         # Case when image is not cached
         state = State()
@@ -165,13 +174,6 @@ async def run_validation(
                 redis_keys.state_key(img_hash): state.model_dump_json(),
             },
         )
-
-    if config.general_config.invert_image:
-        pipeline.set_myotube_image(invert_image(pipeline.myotube_image_np))
-    if state.get_next() != 0:
-        img_to_send = pipeline.draw_contours_on_myotube_image(myos)
-    else:
-        img_to_send = pipeline.myotube_image_np
     path = get_fp(settings.images_dir, img_to_send)
     pipeline.save_image(path, img_to_send)
     return ValidationResponse(image_hash=img_hash, image_path=path)
