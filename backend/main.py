@@ -282,12 +282,6 @@ async def inference_ws(
 @app.websocket("/validation/{hash_str}")
 async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     """Websocket for validation mode."""
-
-    # if hash_str != redis_keys.result_key("fake_hash"):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_404_NOT_FOUND,
-    #         detail="Hash string not found.",
-    #     )
     print("Websocket connection openning")
     await websocket.accept()
     print(hash_str)
@@ -298,46 +292,64 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     state = State()
 
     if state.done:
-        await websocket.close(reason="Validation done")
-        return
-
+        await websocket.send_json(
+            {
+                "roi_coords": None,
+                "contour_id": len(mo),
+                "total": len(mo),
+            }
+        )
     i = state.get_next()
     # Starting Contour send on connection openning
     await websocket.send_json(
-        {"roi_coords": mo[i].roi_coords, "contour_id": i}
+        {
+            "roi_coords": mo[i].roi_coords,
+            "contour_id": i + 1,
+            "total": len(mo),
+        }
     )
     while True:
         # len 1000
         if len(mo) == i + 1:
             state.done = True
-            await websocket.close(reason="Validation done")
-
-        # Wating for response from front
-        data = int(await websocket.receive_text())
-        # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
-        if data == 0:
-            print("Invalid contour")
-            state.invalid.add(i)
-        elif data == 1:
-            print("Valid contour")
-            state.valid.add(i)
-        elif data == 2:
-            print("Skip contour")
-            _ = mo.move_object_to_end(i)
-        elif data == -1:
-            print("Undo contour")
-            state.valid.discard(i)
-            state.invalid.discard(i)
-        else:
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Invalid data received.",
+            await websocket.send_json(
+                {
+                    "roi_coords": None,
+                    "contour_id": i + 1,
+                    "total": len(mo),
+                }
             )
-        # Send next contour
-        step = data != 2 if data != -1 else -1
-        i = min(max(i + step, 0), len(mo) - 1)
-        print("step: ", step)
-        print("Sending next contour")
-        await websocket.send_json(
-            {"roi_coords": mo[i].roi_coords, "contour_id": i}
-        )
+        else:
+            # Wating for response from front
+            data = int(await websocket.receive_text())
+            # Invalid = 0, Valid = 1, Skip = 2, Undo = -1
+            if data == 0:
+                print("Invalid contour")
+                state.invalid.add(i)
+            elif data == 1:
+                print("Valid contour")
+                state.valid.add(i)
+            elif data == 2:
+                print("Skip contour")
+                _ = mo.move_object_to_end(i)
+            elif data == -1:
+                print("Undo contour")
+                state.valid.discard(i)
+                state.invalid.discard(i)
+            else:
+                raise WebSocketException(
+                    code=status.WS_1008_POLICY_VIOLATION,
+                    reason="Invalid data received.",
+                )
+            # Send next contour
+            step = data != 2 if data != -1 else -1
+            i = min(max(i + step, 0), len(mo) - 1)
+            print("step: ", step)
+            print("Sending next contour")
+            await websocket.send_json(
+                {
+                    "roi_coords": mo[i].roi_coords,
+                    "contour_id": i + 1,
+                    "total": len(mo),
+                }
+            )
