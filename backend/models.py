@@ -72,6 +72,10 @@ class GeneralConfig(BaseModel):
     measure_unit: float = Field(
         description="The measure unit for the image", default=1.0, ge=0.0
     )
+    invert_image: bool = Field(
+        description="Whether to invert the image (for visualization only)",
+        default=False,
+    )
 
 
 class Config(BaseModel):

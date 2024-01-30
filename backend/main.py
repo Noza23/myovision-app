@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 import json
 import os
+import tempfile
+
 from typing import Optional
 
 from fastapi import (
@@ -29,6 +31,9 @@ from .utils import preprocess_ws_resp
 from .base import MyoObjects
 from .information import InformationMetrics
 import random
+
+import read_roi
+import numpy as np
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -175,6 +180,48 @@ async def run_inference(
         image_hash=img_hash,
         image_secondary_hash=image_secondary_hash,
     )
+
+
+@app.get("/get_contours/{hash_str}")
+async def get_contours(hash_str: str):
+    """Get the contours of the image."""
+    if hash_str != redis_keys.result_key("fake_hash"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hash string not found.",
+        )
+    print("Recived hash: ", hash_str)
+    mo_nm = hash_str.split(":")[-1][:3]
+    mo = MyoObjects.model_validate(
+        json.load(open(f"data/{mo_nm}_data.json"))["myotubes"]
+    )
+    return {"contours": [x.roi_coords for x in mo]}
+
+
+@app.post("/upload_contours/")
+async def upload_contours(file: UploadFile = File(...)):
+    """Upload the contours of the image."""
+    contents = file.file.read()
+    with tempfile.NamedTemporaryFile() as f:
+        open(f.name, "wb").write(contents)
+        try:
+            rois_myotubes = read_roi.read_roi_zip(f.name)
+        finally:
+            f.close()
+
+    coords_lst = []
+    for _, roi in rois_myotubes.items():
+        coords = np.round(np.stack((roi["x"], roi["y"]), axis=1)).astype(
+            np.int32
+        )[:, None, :]
+        coords_lst.append(coords)
+    if not coords_lst:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No contours found.",
+        )
+    print(coords[0].shape)
+    return {"result": coords_lst[0].tolist()}
 
 
 @app.websocket("/inference/{hash_str}/{sec_hash_str}")
