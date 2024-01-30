@@ -314,6 +314,7 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
                     "total": len(mo),
                 }
             )
+            await websocket.close()
             break
         else:
             # Wating for response from front
