@@ -14,6 +14,7 @@ from fastapi import (
     WebSocketException,
     status,
 )
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
@@ -35,7 +36,7 @@ from .utils import get_fp
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
 redis_keys = REDIS_KEYS(prefix="myovision")
-origins = ["http://localhost:3000"]
+origins = ["*"]
 
 
 @asynccontextmanager
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
+_ = app.mount("/images", StaticFiles(directory="./images"), name="images")
 
 app.add_middleware(
     CORSMiddleware,
