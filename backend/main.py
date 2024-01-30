@@ -185,17 +185,12 @@ async def run_inference(
 @app.get("/get_contours/{hash_str}")
 async def get_contours(hash_str: str):
     """Get the contours of the image."""
-    if hash_str != redis_keys.result_key("fake_hash"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hash string not found.",
-        )
     print("Recived hash: ", hash_str)
-    mo_nm = hash_str.split(":")[-1][:3]
     mo = MyoObjects.model_validate(
-        json.load(open(f"data/{mo_nm}_data.json"))["myotubes"]
+        json.load(open("data/fe2_data.json"))["myotubes"]
     )
-    return {"contours": [x.roi_coords for x in mo]}
+    mo = mo[:4]
+    return {"roi_coords": [x.roi_coords for x in mo]}
 
 
 @app.post("/upload_contours/")
@@ -221,7 +216,8 @@ async def upload_contours(file: UploadFile = File(...)):
             detail="No contours found.",
         )
     print(coords[0].shape)
-    return {"result": coords_lst[0].tolist()}
+    coors = [x.tolist() for x in coords_lst[:4]]
+    return {"batched_coords": coors}
 
 
 @app.websocket("/inference/{hash_str}/{sec_hash_str}")
@@ -309,7 +305,6 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
         }
     )
     while True:
-        # len 1000
         if len(mo) == i + 1:
             state.done = True
             await websocket.send_json(
