@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated, Union
-import json
 
 from fastapi import (
     FastAPI,
@@ -57,14 +56,11 @@ async def lifespan(app: FastAPI):
     print("> Shutting down...")
     del pipeline
     if redis:
-        await redis.flushall()
         await redis.close()
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
-_ = app.mount(
-    "/images", StaticFiles(directory=settings.images_dir), name="images"
-)
+app.mount("/images", StaticFiles(directory=settings.images_dir), name="images")
 
 app.add_middleware(
     CORSMiddleware,
@@ -86,16 +82,9 @@ def setup_redis() -> Union[aioredis.Redis, None]:
     try:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     except Exception as e:
-        print(f"Failed establishing connection to redis: {e}")
+        print(f"! Failed establishing connection to redis: {e}")
         redis = None
     return redis
-
-
-# async def clear_path_cache(redis: aioredis.Redis) -> None:
-#     """clear cache for all paths"""
-#     keys = await redis.keys(redis_keys.image_path_key("*"))
-#     if keys:
-#         await redis.delete(*keys)
 
 
 @app.get("/redis_status/")
@@ -109,7 +98,7 @@ async def redis_status(
         status = await redis.ping()
         return {"status": status}
     except Exception as e:
-        print(f"Failed establishing connection to redis: {e}")
+        print(f"! Failed establishing connection to redis: {e}")
         return {"status": False}
 
 
