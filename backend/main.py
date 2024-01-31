@@ -117,6 +117,11 @@ async def run_validation(
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
 ):
     """Run the pipeline in validation mode."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
 
@@ -173,9 +178,15 @@ async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
     background_tasks: BackgroundTasks,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
 ):
     """Websocket for validation mode."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+
     await websocket.accept()
 
     mo = MyoObjects.model_validate_json(
