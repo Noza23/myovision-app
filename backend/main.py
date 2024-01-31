@@ -277,37 +277,40 @@ async def validation_ws(
 async def run_inference(
     config: Config,
     background_tasks: BackgroundTasks,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
 ):
     """Run the pipeline in inference mode."""
-    if not myotube.filename and not nuclei.filename:
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    if not hasattr(myotube, "filename") and not hasattr(nuclei, "filename"):
         raise HTTPException(
             status_code=400,
             detail="Either myotube or nuclei image must be provided.",
         )
 
     myo_cache, nucl_cache = None, None
-    if myotube.filename:
+
+    if hasattr(myotube, "filename"):
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
         img_hash = pipeline.myotube_hash
         if await redis.exists(redis_keys.result_key(img_hash)):
             myo_cache = await redis.get(redis_keys.result_key(img_hash))
-            path = await redis.get(redis_keys.image_path_key(img_hash))
-            if not path:
-                # path might be cleaned by regular image cleaning
-                path = get_fp(settings.images_dir)
-                _ = pipeline.save_myotube_image(path)
-                background_tasks.add_task(
-                    redis.set, redis_keys.image_path_key(img_hash), path
-                )
-    if nuclei.filename:
+    else:
+        img_hash = None
+
+    if hasattr(nuclei, "filename"):
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
-        sec_img_hash = pipeline.nuclei_hash
-        if await redis.exists(redis_keys.result_key(sec_img_hash)):
-            nucl_cache = await redis.get(redis_keys.result_key(sec_img_hash))
+        img_sec_hash = pipeline.nuclei_hash
+        if await redis.exists(redis_keys.result_key(img_sec_hash)):
+            nucl_cache = await redis.get(redis_keys.result_key(img_sec_hash))
+    else:
+        img_sec_hash = None
 
     # Execute Pipeline
     pipeline._myosam_predictor.update_amg_config(config.amg_config)
@@ -315,15 +318,15 @@ async def run_inference(
     result = pipeline.execute(myo_cache, nucl_cache).information_metrics
     myos, nucls = result.myotubes, result.nucleis
 
-    if myotube.filename and not myo_cache:
+    if hasattr(myotube, "filename") and not myo_cache:
         background_tasks.add_task(
             redis.set, redis_keys.result_key(img_hash), myos.model_dump_json()
         )
 
-    if nuclei.filename and not nucl_cache:
+    if hasattr(myotube, "filename") and not nucl_cache:
         background_tasks.add_task(
             redis.set,
-            redis_keys.result_key(sec_img_hash),
+            redis_keys.result_key(img_sec_hash),
             nucls.model_dump_json(),
         )
 
@@ -333,7 +336,5 @@ async def run_inference(
     pipeline.save_myotube_image(path, img_drawn)
 
     return InferenceResponse(
-        iamge_path=path,
-        image_hash=img_hash if myotube.filename else None,
-        secondary_image_hash=sec_img_hash if nuclei.filename else None,
+        image_path=path, image_hash=img_hash, image_secondary_hash=img_sec_hash
     )
