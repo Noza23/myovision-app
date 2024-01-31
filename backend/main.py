@@ -294,13 +294,13 @@ async def run_inference(
             detail="Either myotube or nuclei image must be provided.",
         )
 
-    myo_cache, nucl_cache = None, None
-
     if hasattr(myotube, "filename"):
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
         img_hash = pipeline.myotube_hash
         if await redis.exists(redis_keys.result_key(img_hash)):
             myo_cache = await redis.get(redis_keys.result_key(img_hash))
+        else:
+            myo_cache = None
     else:
         img_hash = None
 
@@ -309,6 +309,8 @@ async def run_inference(
         img_sec_hash = pipeline.nuclei_hash
         if await redis.exists(redis_keys.result_key(img_sec_hash)):
             nucl_cache = await redis.get(redis_keys.result_key(img_sec_hash))
+        else:
+            nucl_cache = None
     else:
         img_sec_hash = None
 
