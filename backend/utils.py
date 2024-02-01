@@ -1,3 +1,4 @@
+from typing import Any
 import uuid
 import os
 
@@ -6,21 +7,18 @@ def get_fp(base: str, suffix: str = ".png") -> str:
     return os.path.join(base, f"{uuid.uuid4().hex}{suffix}")
 
 
-def preprocess_ws_resp(data: dict) -> dict:
+def preprocess_ws_resp(data: dict[str, Any]) -> dict:
     """preprocess data before sending to front."""
     exc = ["roi_coords", "nuclei_ids"]
-    data_post = {}
+    data_post: dict[str, Any] = {}
     for k, v in data.items():
         if k not in exc:
-            if isinstance(v, tuple):
+            if isinstance(v, (list, tuple)):
                 v = list(v)
-            if isinstance(v, list):
                 for i, _v in enumerate(v):
                     if isinstance(_v, float):
-                        v[i] = round(_v, 2)
+                        v[i] = _v.__round__(2)
                 data_post[k] = v
-            elif isinstance(v, float):
-                data_post[k] = round(v, 2)
-            elif isinstance(v, int):
-                data_post[k] = v
+            if isinstance(v, float):
+                data_post.update({k: v.__round__(2)})
     return data_post
