@@ -244,8 +244,17 @@ async def inference_ws(
     # websockets awaits on (x, y) and sends back instance specific information
     while True:
         print("Entered")
+
+        websocket.send_json(
+            {
+                "info_data": info_data.model_dump(
+                    exclude={"myotubes", "nucleis", "nuclei_clusters"}
+                )
+            }
+        )
         if len(info_data.myotubes) + len(info_data.nucleis) == 0:
             print("No data to send")
+            websocket.close()
             break
 
         # Wating for response from front {x: int, y: int}
