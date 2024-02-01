@@ -12,7 +12,9 @@ exp.ipynb
 test*
 
 # models
-model/*.pth
+*.pt
+*.pth
+checkpoints/*
 snapshot/*
 
 # logs
