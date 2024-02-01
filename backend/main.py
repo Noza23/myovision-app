@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Annotated, Union
+from typing import Annotated, Union, Optional
 
+from pydantic import ValidationError
 from fastapi import (
     FastAPI,
     Depends,
@@ -18,7 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Myotubes, MyoObjects
+from myo_sam.inference.models.base import Myotubes, MyoObjects, NucleiClusters
+from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.predictors.utils import invert_image
 
 from .models import (
@@ -28,8 +30,9 @@ from .models import (
     State,
     ValidationResponse,
     InferenceResponse,
+    Point,
 )
-from .utils import get_fp
+from .utils import get_fp, preprocess_ws_resp
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -340,3 +343,86 @@ async def run_inference(
     return InferenceResponse(
         image_path=path, image_hash=img_hash, image_secondary_hash=img_sec_hash
     )
+
+
+@app.websocket("/inference/{hash_str}/{sec_hash_str}")
+async def inference_ws(
+    websocket: WebSocket,
+    hash_str: Optional[str],
+    sec_hash_str: Optional[str],
+    background_tasks: BackgroundTasks,
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+) -> None:
+    """Websocket for inference mode."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    if not hash_str and not sec_hash_str:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hash string missing.",
+        )
+
+    if hash_str:
+        myotubes = Myotubes.model_validate_json(
+            await redis.get(redis_keys.result_key(hash_str))
+        )
+    else:
+        myotubes = None
+
+    if sec_hash_str:
+        nucleis = MyoObjects.model_validate_json(
+            await redis.get(redis_keys.result_key(sec_hash_str))
+        )
+    else:
+        nucleis = None
+
+    if isinstance(myotubes, Myotubes) and isinstance(nucleis, MyoObjects):
+        clusters = NucleiClusters.compute_clusters(nucleis)
+    else:
+        clusters = NucleiClusters()
+
+    info_data = InformationMetrics(myotubes, nucleis, clusters)
+    info_data.model_dump_json(
+        exclude={"myotubes", "nucleis", "nuclei_clusters"}
+    )
+
+    await websocket.accept()
+    # Initial websocket sends general information like total number area ...
+    # websockets awaits on (x, y) and sends back instance specific information
+    while True:
+        await websocket.send_json(
+            {
+                "info_data": info_data.model_dump(
+                    exclude={"myotubes", "nucleis", "nuclei_clusters"}
+                )
+            }
+        )
+        if len(myotubes) + len(nucleis) == 0:
+            await websocket.close()
+            break
+
+        # Wating for response from front {x: int, y: int}
+        data = await websocket.receive_json()
+
+        try:
+            point = Point.model_validate(data)
+        except ValidationError:
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid data received.",
+            )
+        myo = myotubes.get_instance_by_point(point.to_tuple())
+        if myo:
+            clusts = clusters.get_clusters_by_myotube_id(myo.identifier)
+            resp = {
+                "info_data": {
+                    "myotube": preprocess_ws_resp(myo.model_dump()),
+                    "clusters": [clust.model_dump() for clust in clusts],
+                }
+            }
+        else:
+            resp = {"info_data": {"myotube": None, "clusters": None}}
+        await websocket.send_json(resp)
