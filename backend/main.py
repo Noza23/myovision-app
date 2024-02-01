@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Annotated, Union, Optional
+from typing import Annotated, Union, Optional, Any
 
 from pydantic import ValidationError
 from fastapi import (
@@ -93,7 +93,7 @@ def setup_redis() -> Union[aioredis.Redis, None]:
 @app.get("/redis_status/")
 async def redis_status(
     redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
-):
+) -> dict[str, bool]:
     """check status of the redis connection"""
     if not redis:
         return {"status": False}
@@ -106,7 +106,7 @@ async def redis_status(
 
 
 @app.get("/get_config_schema/")
-async def get_config_schema() -> dict:
+async def get_config_schema() -> dict[str, Any]:
     """Get the configuration of the pipeline."""
     return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
@@ -350,7 +350,6 @@ async def inference_ws(
     websocket: WebSocket,
     hash_str: Optional[str],
     sec_hash_str: Optional[str],
-    background_tasks: BackgroundTasks,
     redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
 ) -> None:
     """Websocket for inference mode."""
@@ -426,3 +425,26 @@ async def inference_ws(
         else:
             resp = {"info_data": {"myotube": None, "clusters": None}}
         await websocket.send_json(resp)
+
+
+@app.get("/get_contours/{hash_str}")
+async def get_contours(
+    hash_str: str,
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+) -> dict[str, list[list[list[int]]]]:
+    """Get the contours for specific image."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+
+    objs = MyoObjects.model_validate(
+        await redis.get(redis_keys.result_key(hash_str))
+    )
+    if not objs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No contours found for this image.",
+        )
+    return {"roi_coords": [x.roi_coords for x in objs]}
