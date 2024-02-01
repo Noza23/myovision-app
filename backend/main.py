@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated, Union, Optional, Any
+import tempfile
 
 from pydantic import ValidationError
 from fastapi import (
@@ -17,6 +18,7 @@ from fastapi import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
+from read_roi import read_roi_zip
 
 from myo_sam.inference.pipeline import Pipeline
 from myo_sam.inference.models.base import Myotubes, MyoObjects, NucleiClusters
@@ -416,7 +418,7 @@ async def inference_ws(
         myo = myotubes.get_instance_by_point(point.to_tuple())
         if myo:
             clusts = clusters.get_clusters_by_myotube_id(myo.identifier)
-            resp = {
+            resp: dict[str, Any] = {
                 "info_data": {
                     "myotube": preprocess_ws_resp(myo.model_dump()),
                     "clusters": [clust.model_dump() for clust in clusts],
@@ -439,7 +441,7 @@ async def get_contours(
             detail="Redis connection is not available.",
         )
 
-    objs = MyoObjects.model_validate(
+    objs = MyoObjects.model_validate_json(
         await redis.get(redis_keys.result_key(hash_str))
     )
     if not objs:
@@ -448,3 +450,40 @@ async def get_contours(
             detail="No contours found for this image.",
         )
     return {"roi_coords": [x.roi_coords for x in objs]}
+
+
+@app.post("/upload_contours/{hash_str}")
+async def upload_contours(
+    hash_str: str,
+    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+    file: UploadFile = File(...),
+):
+    """Upload the contours of the image."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    contents = file.file.read()
+    with tempfile.NamedTemporaryFile() as f:
+        open(f.name, "wb").write(contents)
+        try:
+            rois_myotubes = read_roi_zip(f.name)
+        finally:
+            f.close()
+
+    coords_lst = [
+        [[x, y] for x, y in zip(roi["x"], roi["y"])]
+        for _, roi in rois_myotubes.items()
+    ]
+
+    if not coords_lst:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No contours found in the file.",
+        )
+    objects = MyoObjects.model_validate_json(
+        await redis.get(redis_keys.result_key(hash_str))
+    )
+    objects.add_instances_from_coords(coords_lst)
+    return {"batched_coords": coords_lst}

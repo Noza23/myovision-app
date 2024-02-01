@@ -18,6 +18,7 @@ dependencies = [
   "fastapi[all]",
   "redis>=5.0.0",
   "hiredis>=2.3.2",
+  "read-roi"
 ]
 
 [project.optional-dependencies]
