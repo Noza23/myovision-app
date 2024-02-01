@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import (
     FastAPI,
@@ -271,7 +271,7 @@ async def inference_ws(
         myo = myotubes.get_instance_by_point(point.to_tuple())
         if myo:
             clusts = nuclei_clusters.get_clusters_by_myotube_id(myo.identifier)
-            resp = {
+            resp: dict[str, Any] = {
                 "info_data": {
                     "myotube": preprocess_ws_resp(myo.model_dump()),
                     "clusters": [clust.model_dump() for clust in clusts],

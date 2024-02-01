@@ -1,5 +1,5 @@
 fastapi[all]
-read-roi
 networkx
 numpy
 opencv-python-headless
+read-roi
