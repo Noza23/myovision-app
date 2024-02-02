@@ -322,6 +322,9 @@ async def run_inference(
     pipeline.set_measure_unit(config.general_config.measure_unit)
     result = pipeline.execute(myo_cache, nucl_cache).information_metrics
     myos, nucls = result.myotubes, result.nucleis
+    general_info = preprocess_ws_resp(
+        result.model_dump(exclude={"myotubes", "nucleis", "nuclei_clusters"})
+    )
 
     if hasattr(myotube, "filename") and not myo_cache:
         background_tasks.add_task(
@@ -341,7 +344,10 @@ async def run_inference(
     pipeline.save_myotube_image(path, img_drawn)
 
     return InferenceResponse(
-        image_path=path, image_hash=img_hash, image_secondary_hash=img_sec_hash
+        image_path=path,
+        image_hash=img_hash,
+        image_secondary_hash=img_sec_hash,
+        general_info=general_info,
     )
 
 
@@ -418,7 +424,9 @@ async def inference_ws(
             clusts = clusters.get_clusters_by_myotube_id(myo.identifier)
             resp: dict[str, Any] = {
                 "info_data": {
-                    "myotube": preprocess_ws_resp(myo.model_dump()),
+                    "myotube": preprocess_ws_resp(
+                        myo.model_dump(), exclude=["roi_coords", "nuclei_ids"]
+                    ),
                     "clusters": [clust.model_dump() for clust in clusts],
                 }
             }

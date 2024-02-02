@@ -84,6 +84,9 @@ class InferenceResponse(BaseModel):
     image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
+    general_info: dict[str, Union[str, float]] = Field(
+        description="General information about segmentation"
+    )
 
 
 class REDIS_KEYS:
