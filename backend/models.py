@@ -66,6 +66,11 @@ class State(BaseModel):
             return 0
         return max(combined) + 1
 
+    def shift_all(self, shift: int) -> None:
+        """Shift all indices."""
+        self.valid = {i + shift for i in self.valid}
+        self.invalid = {i + shift for i in self.invalid}
+
 
 class ValidationResponse(BaseModel):
     """Validation response."""

@@ -7,7 +7,6 @@ from pydantic import ValidationError
 from fastapi import (
     FastAPI,
     Depends,
-    BackgroundTasks,
     UploadFile,
     File,
     HTTPException,
@@ -46,18 +45,15 @@ origins = ["*"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    print("> Starting Application...")
-
     print("> Starting Redis...")
-    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-
-    print("> Loading models...")
+    redis = get_redis()
     global pipeline
     pipeline = Pipeline()
+    print("> Loading Stardist model...")
     pipeline._stardist_predictor.set_model(settings.stardist_model)
+    print("> Loading Myosam model...")
     pipeline._myosam_predictor.set_model(settings.myosam_model, "cpu")
     yield
-
     print("> Shutting down...")
     del pipeline
     if redis:
@@ -125,7 +121,6 @@ async def get_config_schema() -> dict[str, Any]:
 async def run_validation(
     image: UploadFile,
     config: Config,
-    background_tasks: BackgroundTasks,
     redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
 ):
@@ -167,12 +162,11 @@ async def run_validation(
         pipeline._myosam_predictor.update_amg_config(config.amg_config)
         pipeline.set_measure_unit(config.general_config.measure_unit)
         myos = pipeline.execute().information_metrics.myotubes
-        background_tasks.add_task(
-            redis.mset,
+        await redis.mset(
             {
                 redis_keys.result_key(img_hash): myos.model_dump_json(),
                 redis_keys.state_key(img_hash): state.model_dump_json(),
-            },
+            }
         )
     path = get_fp(settings.images_dir, img_to_send)
     pipeline.save_image(path, img_to_send)
@@ -183,7 +177,6 @@ async def run_validation(
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
-    background_tasks: BackgroundTasks,
     redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
 ):
     """Websocket for validation mode."""
@@ -231,12 +224,9 @@ async def validation_ws(
                     "total": len(mo),
                 }
             )
-            background_tasks.add_task(
-                redis.set,
-                redis_keys.state_key(hash_str),
-                state.model_dump_json(),
+            await redis.set(
+                redis_keys.result_key(hash_str), mo.model_dump_json()
             )
-            await websocket.close()
             break
 
         else:
@@ -248,10 +238,8 @@ async def validation_ws(
                 state.valid.add(i)
             elif data == 2:
                 _ = mo.move_object_to_end(i)
-                background_tasks.add_task(
-                    redis.set,
-                    redis_keys.result_key(hash_str),
-                    mo.model_dump_json(),
+                await redis.set(
+                    redis_keys.result_key(hash_str), mo.model_dump_json()
                 )
             elif data == -1:
                 state.valid.discard(i)
@@ -261,12 +249,9 @@ async def validation_ws(
                     code=status.WS_1008_POLICY_VIOLATION,
                     reason="Invalid data received.",
                 )
-            background_tasks.add_task(
-                redis.set,
-                redis_keys.state_key(hash_str),
-                state.model_dump_json(),
+            await redis.set(
+                redis_keys.state_key(hash_str), state.model_dump_json()
             )
-
             # Send next contour
             step = data != 2 if data != -1 else -1
             i = min(max(i + step, 0), len(mo) - 1)
@@ -282,7 +267,6 @@ async def validation_ws(
 @app.post("/inference/", response_model=InferenceResponse)
 async def run_inference(
     config: Config,
-    background_tasks: BackgroundTasks,
     redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
     myotube: UploadFile = File(None),
@@ -327,15 +311,12 @@ async def run_inference(
     )
 
     if hasattr(myotube, "filename") and not myo_cache:
-        background_tasks.add_task(
-            redis.set, redis_keys.result_key(img_hash), myos.model_dump_json()
+        await redis.set(
+            redis_keys.result_key(img_hash), myos.model_dump_json()
         )
-
     if hasattr(myotube, "filename") and not nucl_cache:
-        background_tasks.add_task(
-            redis.set,
-            redis_keys.result_key(img_sec_hash),
-            nucls.model_dump_json(),
+        await redis.set(
+            redis_keys.result_key(img_sec_hash), nucls.model_dump_json()
         )
 
     # Overlay contours on main image
@@ -488,10 +469,18 @@ async def upload_contours(
             detail="No contours found in the file.",
         )
     objs_json = await redis.get(redis_keys.result_key(hash_str))
+    state = State.model_validate_json(
+        await redis.get(redis_keys.state_key(hash_str))
+    )
     if not objs_json:
         objects = MyoObjects()
     else:
         objects = MyoObjects.model_validate_json(objs_json)
     objects.add_instances_from_coords(coords_lst)
+    # Shift all indices and update valid set
+    state.shift_all(len(coords_lst))
+    state.valid.update(range(len(coords_lst)))
+
     await redis.set(redis_keys.result_key(hash_str), objects.model_dump_json())
+    await redis.set(redis_keys.state_key(hash_str), state.model_dump_json())
     return {"batched_coords": coords_lst}
