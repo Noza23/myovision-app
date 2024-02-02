@@ -174,11 +174,17 @@ async def run_inference(
         print("No nuclei provided")
         image_secondary_hash = None
     path = "images/inference.png"
+    info_data = InformationMetrics.model_validate(
+        json.load(open("data/fe4_data.json"))
+    )
 
     return InferenceResponse(
         image_path=path,
         image_hash=img_hash,
         image_secondary_hash=image_secondary_hash,
+        general_info=info_data.model_dump(
+            exclude={"myotubes", "nucleis", "nuclei_clusters"}
+        ),
     )
 
 

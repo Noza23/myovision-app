@@ -143,6 +143,9 @@ class InferenceResponse(BaseModel):
     image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
+    general_info: dict = Field(
+        description="General information about the image."
+    )
 
 
 class REDIS_KEYS:
