@@ -106,6 +106,8 @@ def preprocess_ws_resp(data: dict[str, Any]) -> dict:
                     if isinstance(_v, float):
                         v[i] = _v.__round__(2)
                 data_post[k] = v
-            if isinstance(v, float):
+            elif isinstance(v, float):
                 data_post.update({k: v.__round__(2)})
+            else:
+                data_post.update({k: v})
     return data_post
