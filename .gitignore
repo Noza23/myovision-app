@@ -17,6 +17,13 @@ test*
 checkpoints/*
 snapshot/*
 
+# redis
+*.rdb
+
+# images
+images/*
+
+
 # logs
 *.log
 
