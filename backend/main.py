@@ -305,13 +305,8 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     state = State()
 
     if state.done:
-        await websocket.send_json(
-            {
-                "roi_coords": None,
-                "contour_id": len(mo),
-                "total": len(mo),
-            }
-        )
+        await websocket.close()
+        return
     i = state.get_next()
     # Starting Contour send on connection openning
     await websocket.send_json(
