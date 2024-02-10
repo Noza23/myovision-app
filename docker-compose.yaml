@@ -1,0 +1,25 @@
+version: '0.1.0'
+services:
+  backend:
+    image: myovision-backend:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
+  frontend:
+    image: myovision-frontend:latest
+    ports:
+      - "80:80"
+    environment:
+      - BACKEND_HOST=backend
+    depends_on:
+      - backend
+
