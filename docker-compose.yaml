@@ -6,13 +6,22 @@ services:
       - "8080:8080"
     environment:
       - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
 
   redis:
     image: redis:latest
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   frontend:
     image: myovision-frontend:latest
@@ -22,4 +31,6 @@ services:
       - BACKEND_HOST=backend
     depends_on:
       - backend
+    env_file:
+      - .env
 
