@@ -210,13 +210,6 @@ async def validation_ws(
     while True:
         if len(mo) == i + 1:
             state.done = True
-            websocket.send_json(
-                {
-                    "roi_coords": None,
-                    "contour_id": i + 1,
-                    "total": len(mo),
-                }
-            )
             await redis.set(
                 redis_keys.result_key(hash_str), mo.model_dump_json()
             )
