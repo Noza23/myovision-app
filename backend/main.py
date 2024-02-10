@@ -319,13 +319,6 @@ async def validation_ws(websocket: WebSocket, hash_str: str) -> None:
     while True:
         if len(mo) == i + 1:
             state.done = True
-            await websocket.send_json(
-                {
-                    "roi_coords": None,
-                    "contour_id": i + 1,
-                    "total": len(mo),
-                }
-            )
             await websocket.close()
             break
         else:
