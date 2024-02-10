@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Annotated, Union
+from typing import Annotated, Union, Optional, Any
+import tempfile
 
+from pydantic import ValidationError
 from fastapi import (
     FastAPI,
     Depends,
-    BackgroundTasks,
     UploadFile,
     File,
     HTTPException,
@@ -16,9 +17,11 @@ from fastapi import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis  # type: ignore
+from read_roi import read_roi_zip
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Myotubes, MyoObjects
+from myo_sam.inference.models.base import Myotubes, MyoObjects, NucleiClusters
+from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.predictors.utils import invert_image
 
 from .models import (
@@ -28,8 +31,9 @@ from .models import (
     State,
     ValidationResponse,
     InferenceResponse,
+    Point,
 )
-from .utils import get_fp
+from .utils import get_fp, preprocess_ws_resp
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -41,18 +45,15 @@ origins = ["*"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    print("> Starting Application...")
-
     print("> Starting Redis...")
-    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-
-    print("> Loading models...")
+    redis = get_redis()
     global pipeline
     pipeline = Pipeline()
+    print("> Loading Stardist model...")
     pipeline._stardist_predictor.set_model(settings.stardist_model)
-    pipeline._myosam_predictor.set_model(settings.myosam_model)
+    print("> Loading Myosam model...")
+    pipeline._myosam_predictor.set_model(settings.myosam_model, "cpu")
     yield
-
     print("> Shutting down...")
     del pipeline
     if redis:
@@ -76,22 +77,30 @@ def get_pipeline_instance() -> Pipeline:
     return pipeline.model_copy()
 
 
-@lru_cache  # Work on single connection
-def setup_redis() -> Union[aioredis.Redis, None]:
-    """Redis connection is single and shared across all users."""
+async def setup_redis() -> Union[aioredis.Redis, None]:
+    """Get a Redis connection."""
     try:
-        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        redis = await aioredis.from_url(settings.redis_url)
     except Exception as e:
-        print(f"! Failed establishing connection to redis: {e}")
+        print(f"! Failed establishing connection to Redis: {e}")
         redis = None
+    return redis
+
+
+@lru_cache
+def get_redis(
+    redis: Union[aioredis.Redis, None] = Depends(setup_redis),
+) -> Union[aioredis.Redis, None]:
+    """Cache the Redis connection."""
     return redis
 
 
 @app.get("/redis_status/")
 async def redis_status(
-    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
-):
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
+) -> dict[str, bool]:
     """check status of the redis connection"""
+
     if not redis:
         return {"status": False}
     try:
@@ -103,7 +112,7 @@ async def redis_status(
 
 
 @app.get("/get_config_schema/")
-async def get_config_schema() -> dict:
+async def get_config_schema() -> dict[str, Any]:
     """Get the configuration of the pipeline."""
     return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
@@ -112,8 +121,7 @@ async def get_config_schema() -> dict:
 async def run_validation(
     image: UploadFile,
     config: Config,
-    background_tasks: BackgroundTasks,
-    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
 ):
     """Run the pipeline in validation mode."""
@@ -124,13 +132,6 @@ async def run_validation(
         )
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
-
-    if any(pipeline.myotube_image_np.shape > 2048):
-        print("> Image is too large, cropping to 2048x2048")
-        pipeline.set_myotube_image(
-            pipeline.myotube_image_np[:2048, :2048, :],
-            image.filename,
-        )
     img_hash = pipeline.myotube_hash
 
     img_to_send = pipeline.myotube_image_np.copy()
@@ -161,12 +162,11 @@ async def run_validation(
         pipeline._myosam_predictor.update_amg_config(config.amg_config)
         pipeline.set_measure_unit(config.general_config.measure_unit)
         myos = pipeline.execute().information_metrics.myotubes
-        background_tasks.add_task(
-            redis.mset,
+        await redis.mset(
             {
                 redis_keys.result_key(img_hash): myos.model_dump_json(),
                 redis_keys.state_key(img_hash): state.model_dump_json(),
-            },
+            }
         )
     path = get_fp(settings.images_dir, img_to_send)
     pipeline.save_image(path, img_to_send)
@@ -177,8 +177,7 @@ async def run_validation(
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
-    background_tasks: BackgroundTasks,
-    redis: Annotated[Union[aioredis.Redis, None], Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
 ):
     """Websocket for validation mode."""
     if not redis:
@@ -225,12 +224,9 @@ async def validation_ws(
                     "total": len(mo),
                 }
             )
-            background_tasks.add_task(
-                redis.set,
-                redis_keys.state_key(hash_str),
-                state.model_dump_json(),
+            await redis.set(
+                redis_keys.result_key(hash_str), mo.model_dump_json()
             )
-            await websocket.close()
             break
 
         else:
@@ -242,10 +238,8 @@ async def validation_ws(
                 state.valid.add(i)
             elif data == 2:
                 _ = mo.move_object_to_end(i)
-                background_tasks.add_task(
-                    redis.set,
-                    redis_keys.result_key(hash_str),
-                    mo.model_dump_json(),
+                await redis.set(
+                    redis_keys.result_key(hash_str), mo.model_dump_json()
                 )
             elif data == -1:
                 state.valid.discard(i)
@@ -255,12 +249,9 @@ async def validation_ws(
                     code=status.WS_1008_POLICY_VIOLATION,
                     reason="Invalid data received.",
                 )
-            background_tasks.add_task(
-                redis.set,
-                redis_keys.state_key(hash_str),
-                state.model_dump_json(),
+            await redis.set(
+                redis_keys.state_key(hash_str), state.model_dump_json()
             )
-
             # Send next contour
             step = data != 2 if data != -1 else -1
             i = min(max(i + step, 0), len(mo) - 1)
@@ -276,55 +267,56 @@ async def validation_ws(
 @app.post("/inference/", response_model=InferenceResponse)
 async def run_inference(
     config: Config,
-    background_tasks: BackgroundTasks,
-    redis: Annotated[aioredis.Redis, Depends(setup_redis)],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
     pipeline: Annotated[Pipeline, Depends(get_pipeline_instance)],
     myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
 ):
     """Run the pipeline in inference mode."""
-    if not myotube.filename and not nuclei.filename:
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    if not hasattr(myotube, "filename") and not hasattr(nuclei, "filename"):
         raise HTTPException(
             status_code=400,
             detail="Either myotube or nuclei image must be provided.",
         )
 
     myo_cache, nucl_cache = None, None
-    if myotube.filename:
+    if hasattr(myotube, "filename"):
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
         img_hash = pipeline.myotube_hash
         if await redis.exists(redis_keys.result_key(img_hash)):
             myo_cache = await redis.get(redis_keys.result_key(img_hash))
-            path = await redis.get(redis_keys.image_path_key(img_hash))
-            if not path:
-                # path might be cleaned by regular image cleaning
-                path = get_fp(settings.images_dir)
-                _ = pipeline.save_myotube_image(path)
-                background_tasks.add_task(
-                    redis.set, redis_keys.image_path_key(img_hash), path
-                )
-    if nuclei.filename:
+    else:
+        img_hash = None
+
+    if hasattr(nuclei, "filename"):
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
-        sec_img_hash = pipeline.nuclei_hash
-        if await redis.exists(redis_keys.result_key(sec_img_hash)):
-            nucl_cache = await redis.get(redis_keys.result_key(sec_img_hash))
+        img_sec_hash = pipeline.nuclei_hash
+        if await redis.exists(redis_keys.result_key(img_sec_hash)):
+            nucl_cache = await redis.get(redis_keys.result_key(img_sec_hash))
+    else:
+        img_sec_hash = None
 
     # Execute Pipeline
     pipeline._myosam_predictor.update_amg_config(config.amg_config)
     pipeline.set_measure_unit(config.general_config.measure_unit)
     result = pipeline.execute(myo_cache, nucl_cache).information_metrics
     myos, nucls = result.myotubes, result.nucleis
+    general_info = preprocess_ws_resp(
+        result.model_dump(exclude={"myotubes", "nucleis", "nuclei_clusters"})
+    )
 
-    if myotube.filename and not myo_cache:
-        background_tasks.add_task(
-            redis.set, redis_keys.result_key(img_hash), myos.model_dump_json()
+    if hasattr(myotube, "filename") and not myo_cache:
+        await redis.set(
+            redis_keys.result_key(img_hash), myos.model_dump_json()
         )
-
-    if nuclei.filename and not nucl_cache:
-        background_tasks.add_task(
-            redis.set,
-            redis_keys.result_key(sec_img_hash),
-            nucls.model_dump_json(),
+    if hasattr(myotube, "filename") and not nucl_cache:
+        await redis.set(
+            redis_keys.result_key(img_sec_hash), nucls.model_dump_json()
         )
 
     # Overlay contours on main image
@@ -333,7 +325,162 @@ async def run_inference(
     pipeline.save_myotube_image(path, img_drawn)
 
     return InferenceResponse(
-        iamge_path=path,
-        image_hash=img_hash if myotube.filename else None,
-        secondary_image_hash=sec_img_hash if nuclei.filename else None,
+        image_path=path,
+        image_hash=img_hash,
+        image_secondary_hash=img_sec_hash,
+        general_info=general_info,
     )
+
+
+@app.websocket("/inference/{hash_str}/{sec_hash_str}")
+async def inference_ws(
+    websocket: WebSocket,
+    hash_str: Optional[str],
+    sec_hash_str: Optional[str],
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
+) -> None:
+    """Websocket for inference mode."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    if not hash_str and not sec_hash_str:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hash string missing.",
+        )
+
+    if hash_str:
+        myotubes = Myotubes.model_validate_json(
+            await redis.get(redis_keys.result_key(hash_str))
+        )
+    else:
+        myotubes = None
+
+    if sec_hash_str:
+        nucleis = MyoObjects.model_validate_json(
+            await redis.get(redis_keys.result_key(sec_hash_str))
+        )
+    else:
+        nucleis = None
+
+    if isinstance(myotubes, Myotubes) and isinstance(nucleis, MyoObjects):
+        clusters = NucleiClusters.compute_clusters(nucleis)
+    else:
+        clusters = NucleiClusters()
+
+    info_data = InformationMetrics(myotubes, nucleis, clusters)
+    info_data.model_dump_json(
+        exclude={"myotubes", "nucleis", "nuclei_clusters"}
+    )
+
+    await websocket.accept()
+    # Initial websocket sends general information like total number area ...
+    # websockets awaits on (x, y) and sends back instance specific information
+    while True:
+        await websocket.send_json(
+            {
+                "info_data": info_data.model_dump(
+                    exclude={"myotubes", "nucleis", "nuclei_clusters"}
+                )
+            }
+        )
+        if len(myotubes) + len(nucleis) == 0:
+            await websocket.close()
+            break
+
+        # Wating for response from front {x: int, y: int}
+        data = await websocket.receive_json()
+
+        try:
+            point = Point.model_validate(data)
+        except ValidationError:
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid data received.",
+            )
+        myo = myotubes.get_instance_by_point(point.to_tuple())
+        if myo:
+            clusts = clusters.get_clusters_by_myotube_id(myo.identifier)
+            resp: dict[str, Any] = {
+                "info_data": {
+                    "myotube": preprocess_ws_resp(
+                        myo.model_dump(), exclude=["roi_coords", "nuclei_ids"]
+                    ),
+                    "clusters": [clust.model_dump() for clust in clusts],
+                }
+            }
+        else:
+            resp = {"info_data": {"myotube": None, "clusters": None}}
+        await websocket.send_json(resp)
+
+
+@app.get("/get_contours/{hash_str}")
+async def get_contours(
+    hash_str: str,
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
+) -> dict[str, list[list[list[int]]]]:
+    """Get the contours for specific image."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+
+    objs_json = await redis.get(redis_keys.result_key(hash_str))
+    if not objs_json:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No contours found for this image.",
+        )
+    objs = MyoObjects.model_validate_json(objs_json)
+    return {"roi_coords": [x.roi_coords for x in objs]}
+
+
+@app.post("/upload_contours/{hash_str}")
+async def upload_contours(
+    hash_str: str,
+    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
+    file: UploadFile = File(...),
+):
+    """Upload the contours of the image."""
+    if not redis:
+        raise HTTPException(
+            status_code=400,
+            detail="Redis connection is not available.",
+        )
+    contents = file.file.read()
+    with tempfile.NamedTemporaryFile() as f:
+        open(f.name, "wb").write(contents)
+        try:
+            rois_myotubes = read_roi_zip(f.name)
+        finally:
+            f.close()
+
+    coords_lst = [
+        [[x, y] for x, y in zip(roi["x"], roi["y"])]
+        for _, roi in rois_myotubes.items()
+    ]
+
+    if not coords_lst:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No contours found in the file.",
+        )
+    objs_json = await redis.get(redis_keys.result_key(hash_str))
+    state = State.model_validate_json(
+        await redis.get(redis_keys.state_key(hash_str))
+    )
+    if not objs_json:
+        objects = MyoObjects()
+    else:
+        objects = MyoObjects.model_validate_json(objs_json)
+    objects.add_instances_from_coords(coords_lst)
+    # Shift all indices and update valid set
+    state.shift_all(len(coords_lst))
+    state.valid.update(range(len(coords_lst)))
+
+    await redis.set(redis_keys.result_key(hash_str), objects.model_dump_json())
+    await redis.set(redis_keys.state_key(hash_str), state.model_dump_json())
+    return {"batched_coords": coords_lst}

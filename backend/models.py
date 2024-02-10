@@ -44,10 +44,13 @@ class Config(BaseModel):
 class Settings(BaseSettings):
     """App confiuration."""
 
-    redis_url: str
-    myosam_model: str
-    stardist_model: str
-    images_dir: str
+    redis_url: str = Field(description="Redis URL.")
+    myosam_model: str = Field(description="MyoSam model path.")
+    stardist_model: str = Field(description="StarDist model path.")
+    images_dir: str = Field(description="Images directory.")
+    backend_port: int = Field(description="Backend port.", ge=0)
+    frontend_port: int = Field(description="Frontend port.", ge=0)
+    web_concurrency: int = Field(description="Web concurrency.", ge=0)
 
 
 class State(BaseModel):
@@ -66,6 +69,11 @@ class State(BaseModel):
             return 0
         return max(combined) + 1
 
+    def shift_all(self, shift: int) -> None:
+        """Shift all indices."""
+        self.valid = {i + shift for i in self.valid}
+        self.invalid = {i + shift for i in self.invalid}
+
 
 class ValidationResponse(BaseModel):
     """Validation response."""
@@ -83,6 +91,9 @@ class InferenceResponse(BaseModel):
     )
     image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
+    )
+    general_info: dict[str, Union[str, float]] = Field(
+        description="General information about segmentation"
     )
 
 
