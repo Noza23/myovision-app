@@ -168,7 +168,7 @@ async def run_validation(
                 redis_keys.state_key(img_hash): state.model_dump_json(),
             }
         )
-    path = get_fp(settings.images_dir, img_to_send)
+    path = get_fp(settings.images_dir)
     pipeline.save_image(path, img_to_send)
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
@@ -306,9 +306,8 @@ async def run_inference(
         )
 
     # Overlay contours on main image
-    img_drawn = pipeline.draw_contours_on_myotube_image(myos, nucls)
     path = get_fp(settings.images_dir)
-    pipeline.save_myotube_image(path, img_drawn)
+    pipeline.save_myotube_image(path)
 
     return InferenceResponse(
         image_path=path,
