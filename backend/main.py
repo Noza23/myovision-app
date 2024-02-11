@@ -80,7 +80,9 @@ def get_pipeline_instance() -> Pipeline:
 async def setup_redis() -> Union[aioredis.Redis, None]:
     """Get a Redis connection."""
     try:
-        redis = await aioredis.from_url(settings.redis_url)
+        redis = await aioredis.from_url(
+            settings.redis_url, decode_responses=True
+        )
     except Exception as e:
         print(f"! Failed establishing connection to Redis: {e}")
         redis = None
@@ -132,7 +134,7 @@ async def run_validation(
         )
     # Set the image
     pipeline.set_myotube_image(await image.read(), image.filename)
-    img_hash = pipeline.myotube_hash
+    img_hash = pipeline.myotube_hash()
 
     img_to_send = pipeline.myotube_image_np.copy()
     if config.general_config.invert_image:
@@ -273,7 +275,7 @@ async def run_inference(
     myo_cache, nucl_cache = None, None
     if hasattr(myotube, "filename"):
         pipeline.set_myotube_image(await myotube.read(), myotube.filename)
-        img_hash = pipeline.myotube_hash
+        img_hash = pipeline.myotube_hash()
         if await redis.exists(redis_keys.result_key(img_hash)):
             myo_cache = await redis.get(redis_keys.result_key(img_hash))
     else:
@@ -281,7 +283,7 @@ async def run_inference(
 
     if hasattr(nuclei, "filename"):
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
-        img_sec_hash = pipeline.nuclei_hash
+        img_sec_hash = pipeline.nuclei_hash()
         if await redis.exists(redis_keys.result_key(img_sec_hash)):
             nucl_cache = await redis.get(redis_keys.result_key(img_sec_hash))
     else:
