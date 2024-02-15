@@ -16,7 +16,7 @@ from backend import SETTINGS, KEYS
 from backend.models import Config, State
 from backend.routers import inference, validation
 from backend.utils import clean_dir
-from backend.dependancies import get_redis, get_status, set_pipeline
+from backend.dependancies import set_pipeline, setup_redis
 
 
 origins = ["*"]
@@ -26,7 +26,7 @@ origins = ["*"]
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
     print("> Starting Redis...")
-    redis = get_redis()
+    redis = await setup_redis()
     pipeline = set_pipeline(Pipeline())
     print("> Loading Stardist model...")
     pipeline._stardist_predictor.set_model(SETTINGS.stardist_model)
@@ -38,8 +38,7 @@ async def lifespan(app: FastAPI):
     print("> Cleaning images directory...")
     clean_dir(SETTINGS.images_dir)
     print("> Closing Redis...")
-    if redis:
-        await redis.close()
+    await redis.close()
     print("> Done.")
 
 
@@ -63,12 +62,10 @@ async def root() -> dict[str, str]:
     return {"message": "App developed for the MyoVision project 🚀"}
 
 
-@app.get("/redis_status/", dependencies=[Depends(get_status)])
-async def redis_status(
-    redis: aioredis.Redis = Depends(get_redis),
-) -> dict[str, bool]:
+@app.get("/redis_status/", dependencies=[Depends(setup_redis)])
+async def redis_status() -> dict[str, bool]:
     """check status of the redis connection"""
-    return {"status": await redis.ping()}
+    return {"status": True}
 
 
 @app.get("/get_config_schema/")
@@ -77,9 +74,9 @@ async def get_config_schema() -> dict[str, Any]:
     return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
 
-@app.get("/get_contours/{hash_str}/", dependencies=[Depends(get_status)])
+@app.get("/get_contours/{hash_str}/")
 async def get_contours(
-    hash_str: str, redis: aioredis.Redis = Depends(get_redis)
+    hash_str: str, redis: aioredis.Redis = Depends(setup_redis)
 ) -> dict[str, list[list[list[int]]]]:
     """Get the contours for specific image."""
     objs = await redis.get(KEYS.result_key(hash_str))
@@ -89,10 +86,10 @@ async def get_contours(
     return {"roi_coords": [x.roi_coords for x in objs]}
 
 
-@app.post("/upload_contours/{hash_str}/", dependencies=[Depends(get_status)])
+@app.post("/upload_contours/{hash_str}/")
 async def upload_contours(
     hash_str: str,
-    redis: aioredis.Redis = Depends(get_redis),
+    redis: aioredis.Redis = Depends(setup_redis),
     file: UploadFile = File(...),
 ) -> dict[str, list[list[list[int]]]]:
     """Upload the contours of the image."""

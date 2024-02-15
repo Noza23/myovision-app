@@ -9,13 +9,12 @@ from myo_sam.inference.predictors.utils import invert_image
 from backend import KEYS, SETTINGS
 from backend.utils import get_fp
 from backend.models import Config, ValidationResponse, State
-from backend.dependancies import get_redis, get_pipeline_instance, get_status
+from backend.dependancies import get_pipeline_instance, setup_redis
 
 
 router = APIRouter(
     prefix="/validation",
     tags=["validation"],
-    dependencies=[Depends(get_status)],
     responses={404: {"description": "Not found"}},
 )
 
@@ -24,7 +23,7 @@ router = APIRouter(
 async def run_validation(
     image: UploadFile,
     config: Config,
-    redis: aioredis.Redis = Depends(get_redis),
+    redis: aioredis.Redis = Depends(setup_redis),
     pipeline: Pipeline = Depends(get_pipeline_instance),
 ):
     """Run the pipeline in validation mode."""
@@ -79,7 +78,7 @@ async def run_validation(
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
-    redis: aioredis.Redis = Depends(get_redis),
+    redis: aioredis.Redis = Depends(setup_redis),
 ) -> None:
     """Websocket for validation mode."""
 

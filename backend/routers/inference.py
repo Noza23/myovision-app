@@ -14,13 +14,12 @@ from myo_sam.inference.models.base import Myotubes, Nucleis, NucleiClusters
 from backend import KEYS, SETTINGS
 from backend.utils import get_fp, preprocess_ws_resp
 from backend.models import Config, InferenceResponse, Point
-from backend.dependancies import get_redis, get_pipeline_instance, get_status
+from backend.dependancies import get_pipeline_instance, setup_redis
 
 
 router = APIRouter(
     prefix="/inference",
     tags=["inference"],
-    dependencies=[Depends(get_status)],
     responses={404: {"description": "Not found"}},
 )
 
@@ -30,7 +29,7 @@ async def run_inference(
     config: Config,
     myotube: UploadFile,
     nuclei: UploadFile = File(None),
-    redis: aioredis.Redis = Depends(get_redis),
+    redis: aioredis.Redis = Depends(setup_redis),
     pipeline: Pipeline = Depends(get_pipeline_instance),
 ):
     """Run the pipeline in inference mode."""
@@ -86,7 +85,7 @@ async def inference_ws(
     websocket: WebSocket,
     hash_str: str,
     sec_hash_str: Optional[str],
-    redis: aioredis.Redis = Depends(get_redis),
+    redis: aioredis.Redis = Depends(setup_redis),
 ) -> None:
     """Websocket for inference mode."""
     if hash_str:
