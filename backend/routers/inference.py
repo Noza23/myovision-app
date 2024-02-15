@@ -7,7 +7,6 @@ from redis import asyncio as aioredis  # type: ignore
 from pydantic import ValidationError
 
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.models.base import Myotubes, Nucleis, NucleiClusters
 
 
