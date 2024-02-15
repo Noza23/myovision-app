@@ -77,7 +77,7 @@ async def run_validation(
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
 
-@router.websocket("/{hash_str}")
+@router.websocket("/{hash_str}/")
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
