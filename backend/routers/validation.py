@@ -42,9 +42,13 @@ async def run_validation(
         if myos[0].measure_unit != config.general_config.measure_unit:
             myos.adjust_measure_unit(config.general_config.measure_unit)
             await redis.set(KEYS.result_key(img_hash), myos.model_dump_json())
-        state = State.model_validate_json(
-            await redis.get(KEYS.state_key(img_hash))
-        )
+
+        state_json = await redis.get(KEYS.state_key(img_hash))
+        if state_json:
+            state = State.model_validate_json(state_json)
+        else:
+            state = State()
+            await redis.set(KEYS.state_key(img_hash), state.model_dump_json())
         if state.valid:
             img_to_send = pipeline.draw_contours(
                 img_to_send,
