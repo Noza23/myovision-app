@@ -25,8 +25,6 @@ origins = ["*"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    print("> Starting Redis...")
-    redis = await setup_redis()
     pipeline = set_pipeline(Pipeline())
     print("> Loading Stardist model...")
     pipeline._stardist_predictor.set_model(SETTINGS.stardist_model)
@@ -37,8 +35,6 @@ async def lifespan(app: FastAPI):
     yield
     print("> Cleaning images directory...")
     clean_dir(SETTINGS.images_dir)
-    print("> Closing Redis...")
-    await redis.close()
     print("> Done.")
 
 
