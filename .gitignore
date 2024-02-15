@@ -14,14 +14,14 @@ test*
 # models
 *.pt
 *.pth
-checkpoints/*
+checkpoints/*.pt
 snapshot/*
 
 # redis
 *.rdb
 
 # images
-images/*
+images/*.png
 
 
 # logs

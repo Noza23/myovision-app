@@ -13,13 +13,7 @@ description = "Back-end for myovision project"
 keywords = ["SAM", "Computer Vision", "Instance Segmentation", "Myotube", "Microscopy"]
 readme = "README.md"
 license = {file = "LICENSE"}
-dependencies = [
-  "myo-sam @ git+https://github.com/Noza23/myovision-sam.git",
-  "fastapi[all]",
-  "redis>=5.0.0",
-  "hiredis>=2.3.2",
-  "read-roi"
-]
+dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
 dev = ["mypy", "pre-commit", "ruff"]

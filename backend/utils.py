@@ -7,6 +7,11 @@ def get_fp(base: str, suffix: str = ".png") -> str:
     return os.path.join(base, f"{uuid.uuid4().hex}{suffix}")
 
 
+def clean_dir(base: str) -> None:
+    for f in os.listdir(base):
+        os.remove(os.path.join(base, f))
+
+
 def preprocess_ws_resp(data: dict[str, Any], exclude: list[str] = []) -> dict:
     """preprocess data before sending to front."""
     data_post: dict[str, Any] = {}
