@@ -1,7 +1,7 @@
 from typing import Union
 
 from fastapi import APIRouter, UploadFile, Depends, WebSocket
-from fastapi import HTTPException, status, WebSocketException
+from fastapi import HTTPException, WebSocketException
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
@@ -121,7 +121,7 @@ async def validation_ws(
             state.valid.discard(i)
             state.invalid.discard(i)
         else:
-            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+            raise WebSocketException(1008, "⚠️ Invalid data received.")
 
         await redis.set(KEYS.state_key(hash_str), state.model_dump_json())
         step = data != 2 if data != -1 else -1
