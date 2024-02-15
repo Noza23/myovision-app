@@ -2,17 +2,13 @@ from typing import Union
 from redis import asyncio as aioredis  # type: ignore
 from functools import lru_cache
 
-from fastapi import Depends
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 
 from myo_sam.inference.pipeline import Pipeline
 
-from .models import Settings, REDIS_KEYS
+from backend import SETTINGS
 
-
-settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 pipeline: Pipeline = None
-redis_keys = REDIS_KEYS(prefix="myovision")
 
 
 def get_pipeline_instance() -> Pipeline:
@@ -20,22 +16,26 @@ def get_pipeline_instance() -> Pipeline:
     return pipeline.model_copy()
 
 
-async def setup_redis() -> Union[aioredis.Redis, None]:
+async def setup_redis() -> aioredis.Redis:
     """Get a Redis connection."""
     try:
         redis = await aioredis.from_url(
-            settings.redis_url, decode_responses=True
+            SETTINGS.redis_url, decode_responses=True
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to connect to Redis: {e}"
+            status_code=500, detail=f"⚠️ Failed to connect to Redis: {e}"
         )
     return redis
 
 
 @lru_cache
-def get_redis(
-    redis: Union[aioredis.Redis, None] = Depends(setup_redis),
-) -> Union[aioredis.Redis, None]:
+def get_redis(redis: aioredis.Redis = Depends(setup_redis)) -> aioredis.Redis:
     """Cache the Redis connection."""
     return redis
+
+
+async def get_status(redis: aioredis.Redis) -> None:
+    """Check if Redis is available."""
+    if not await redis.ping():
+        raise HTTPException(status_code=500, detail="⚠️ Redis not available.")
