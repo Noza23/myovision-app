@@ -1,8 +1,7 @@
-from typing import Union
-from redis import asyncio as aioredis  # type: ignore
 from functools import lru_cache
 
 from fastapi import HTTPException, Depends
+from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
 
