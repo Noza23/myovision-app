@@ -1,5 +1,3 @@
-from typing import Union
-
 from fastapi import APIRouter, UploadFile, Depends, WebSocket
 from fastapi import HTTPException, WebSocketException
 from redis import asyncio as aioredis  # type: ignore
@@ -26,7 +24,7 @@ router = APIRouter(
 async def run_validation(
     image: UploadFile,
     config: Config,
-    redis: Union[aioredis.Redis, None] = Depends(get_redis),
+    redis: aioredis.Redis = Depends(get_redis),
     pipeline: Pipeline = Depends(get_pipeline_instance),
 ):
     """Run the pipeline in validation mode."""
@@ -81,7 +79,7 @@ async def run_validation(
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
-    redis: Union[aioredis.Redis, None] = Depends(get_redis),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> None:
     """Websocket for validation mode."""
 
