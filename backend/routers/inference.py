@@ -70,7 +70,8 @@ async def run_inference(
 
     # Overlay contours on main image
     path = get_fp(SETTINGS.images_dir)
-    pipeline.save_myotube_image(path)
+    img = pipeline.draw_contours_on_myotube_image(myotubes=myos, nucleis=nucls)
+    pipeline.save_image(path, img)
 
     return InferenceResponse(
         image_path=path,
@@ -107,23 +108,10 @@ async def inference_ws(
     else:
         clusters = NucleiClusters()
 
-    info_data = InformationMetrics(
-        myotubes=myotubes, nucleis=nucleis, nuclei_clusters=clusters
-    )
-
     await websocket.accept()
     # Initial websocket sends general information like total number area ...
     # websockets awaits on (x, y) and sends back instance specific information
     while True:
-        await websocket.send_json(
-            {
-                "info_data": preprocess_ws_resp(
-                    info_data.model_dump(
-                        exclude={"myotubes", "nucleis", "nuclei_clusters"}
-                    )
-                )
-            }
-        )
         if len(myotubes) + len(nucleis) == 0:
             await websocket.close()
             break
