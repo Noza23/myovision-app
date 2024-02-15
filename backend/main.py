@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from functools import lru_cache
 from typing import Annotated, Union, Optional, Any
 import tempfile
 
@@ -25,8 +24,6 @@ from myo_sam.inference.models.information import InformationMetrics
 from myo_sam.inference.predictors.utils import invert_image
 
 from .models import (
-    Settings,
-    REDIS_KEYS,
     Config,
     State,
     ValidationResponse,
@@ -34,11 +31,9 @@ from .models import (
     Point,
 )
 from .utils import get_fp, preprocess_ws_resp
+from .dependancies import settings, get_pipeline_instance, get_redis
 
 
-settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
-pipeline: Pipeline = None
-redis_keys = REDIS_KEYS(prefix="myovision")
 origins = ["*"]
 
 
@@ -72,34 +67,9 @@ app.add_middleware(
 )
 
 
-def get_pipeline_instance() -> Pipeline:
-    """Each user gets new pipeline instance, where models are shared."""
-    return pipeline.model_copy()
-
-
-async def setup_redis() -> Union[aioredis.Redis, None]:
-    """Get a Redis connection."""
-    try:
-        redis = await aioredis.from_url(
-            settings.redis_url, decode_responses=True
-        )
-    except Exception as e:
-        print(f"! Failed establishing connection to Redis: {e}")
-        redis = None
-    return redis
-
-
-@lru_cache
-def get_redis(
-    redis: Union[aioredis.Redis, None] = Depends(setup_redis),
-) -> Union[aioredis.Redis, None]:
-    """Cache the Redis connection."""
-    return redis
-
-
 @app.get("/redis_status/")
 async def redis_status(
-    redis: Annotated[Union[aioredis.Redis, None], Depends(get_redis)],
+    redis: Union[aioredis.Redis, None] = Depends(get_redis),
 ) -> dict[str, bool]:
     """check status of the redis connection"""
 
@@ -109,7 +79,7 @@ async def redis_status(
         status = await redis.ping()
         return {"status": status}
     except Exception as e:
-        print(f"! Failed establishing connection to redis: {e}")
+        print(f"⚠️ Failed establishing connection to redis: {e}")
         return {"status": False}
 
 
