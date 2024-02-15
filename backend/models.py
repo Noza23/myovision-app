@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     backend_port: int = Field(description="Backend port.", ge=0)
     frontend_port: int = Field(description="Frontend port.", ge=0)
     web_concurrency: int = Field(description="Web concurrency.", ge=0)
+    device: str = Field(description="Device to use for computation.")
 
 
 class State(BaseModel):
