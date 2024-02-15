@@ -70,7 +70,7 @@ async def get_config_schema() -> dict[str, Any]:
     return Config(measure_unit=1.0).model_json_schema()["$defs"]
 
 
-@app.get("/get_contours/{hash_str}/")
+@app.get("/get_contours/{hash_str}")
 async def get_contours(
     hash_str: str, redis: aioredis.Redis = Depends(setup_redis)
 ) -> dict[str, list[list[list[int]]]]:

@@ -30,6 +30,8 @@ async def setup_redis() -> aioredis.Redis:
         raise HTTPException(
             status_code=500, detail=f"⚠️ Failed to connect to Redis: {e}"
         )
-    if not await redis.ping():
+    try:
+        await redis.ping()
+    except Exception:
         raise HTTPException(status_code=500, detail="⚠️ Redis not available.")
     return redis

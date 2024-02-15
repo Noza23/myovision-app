@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Union, Any
 
 from fastapi import APIRouter, UploadFile, WebSocket
 from fastapi import Depends, File
@@ -27,7 +27,7 @@ router = APIRouter(
 @router.post("/", response_model=InferenceResponse)
 async def run_inference(
     config: Config,
-    myotube: UploadFile,
+    myotube: UploadFile = File(None),
     nuclei: UploadFile = File(None),
     redis: aioredis.Redis = Depends(setup_redis),
     pipeline: Pipeline = Depends(get_pipeline_instance),
@@ -80,34 +80,36 @@ async def run_inference(
     )
 
 
-@router.websocket("/{hash_str}/{sec_hash_str}/")
+@router.websocket("/{hash_str}/{sec_hash_str}")
 async def inference_ws(
     websocket: WebSocket,
     hash_str: str,
-    sec_hash_str: Optional[str],
+    sec_hash_str: Union[str, None],
     redis: aioredis.Redis = Depends(setup_redis),
 ) -> None:
     """Websocket for inference mode."""
-    if hash_str:
+    if hash_str and hash_str != "null":
         myotubes = Myotubes.model_validate_json(
             await redis.get(KEYS.result_key(hash_str))
         )
     else:
-        myotubes = None
+        myotubes = Myotubes()
 
-    if sec_hash_str:
+    if sec_hash_str and sec_hash_str != "null":
         nucleis = Nucleis.model_validate_json(
             await redis.get(KEYS.result_key(sec_hash_str))
         )
     else:
-        nucleis = None
+        nucleis = Nucleis()
 
     if myotubes and nucleis:
         clusters = NucleiClusters.compute_clusters(nucleis)
     else:
         clusters = NucleiClusters()
 
-    info_data = InformationMetrics(myotubes, nucleis, clusters)
+    info_data = InformationMetrics(
+        myotubes=myotubes, nucleis=nucleis, nuclei_clusters=clusters
+    )
 
     await websocket.accept()
     # Initial websocket sends general information like total number area ...

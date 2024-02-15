@@ -74,7 +74,7 @@ async def run_validation(
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
 
-@router.websocket("/{hash_str}/")
+@router.websocket("/{hash_str}")
 async def validation_ws(
     websocket: WebSocket,
     hash_str: str,
@@ -126,7 +126,12 @@ async def validation_ws(
 
         if i == len(mo):
             state.done = True
-            await redis.set(KEYS.result_key(hash_str), mo.model_dump_json())
+            await redis.mset(
+                {
+                    KEYS.state_key(hash_str): state.model_dump_json(),
+                    KEYS.result_key(hash_str): mo.model_dump_json(),
+                }
+            )
             break
 
         # Send next contour
