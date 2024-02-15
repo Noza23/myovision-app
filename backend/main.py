@@ -156,7 +156,8 @@ async def run_validation(
         if state.valid:
             img_to_send = pipeline.draw_contours(
                 img_to_send,
-                [myos[i].roi_coords for i in state.valid],
+                [myos[i].roi_coords_np for i in state.valid],
+                color=(0, 255, 0),
             )
     else:
         # Case when image is not cached
@@ -189,8 +190,9 @@ async def validation_ws(
         )
 
     await websocket.accept()
+    print("Hash: ", redis_keys.result_key(hash_str))
 
-    mo = MyoObjects.model_validate_json(
+    mo = Myotubes.model_validate_json(
         await redis.get(redis_keys.result_key(hash_str))
     )
     state = State.model_validate_json(
@@ -210,7 +212,7 @@ async def validation_ws(
     )
 
     while True:
-        if len(mo) == i + 1:
+        if len(mo) == i:
             state.done = True
             await redis.set(
                 redis_keys.result_key(hash_str), mo.model_dump_json()
