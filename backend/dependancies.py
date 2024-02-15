@@ -10,6 +10,13 @@ from backend import SETTINGS
 pipeline: Pipeline = None
 
 
+def set_pipeline(p: Pipeline) -> Pipeline:
+    """Set the pipeline instance."""
+    global pipeline
+    pipeline = p
+    return pipeline
+
+
 def get_pipeline_instance() -> Pipeline:
     """Each user gets new pipeline instance, where models are shared."""
     return pipeline.model_copy()
