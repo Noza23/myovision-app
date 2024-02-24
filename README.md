@@ -25,11 +25,9 @@ The Backend as well as the Frontend won't be published open-source for now, Cont
 ## Visualizations
 
 - Annotation Tool for collecting labeled data
-  ![caption](https://drive.google.com/file/d/1VyDfBLxYYHkPoBV11wJ4LO1NqtcXED38/view?usp=sharing)
   [Video](https://drive.google.com/file/d/1JFWEre71lWuu_wAtUcogsJ7cMXfV57Or/view?usp=sharing)
 
 - Inference Tool for observing model's predictions and relevant metrics
-  ![caption](https://drive.google.com/file/d/1YnVX93IUUciRpEoDXEf9SXjGfiDVMBXE/view?usp=sharing)
   [Video](https://drive.google.com/file/d/1JFWEre71lWuu_wAtUcogsJ7cMXfV57Or/view?usp=sharing)
 
 # Installation
