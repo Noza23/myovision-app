@@ -15,7 +15,7 @@ With a slight modification the Backend can be generalized and used for any compu
 
 The Backend as well as the Frontend won't be published open-source for now, Contact the maintainer for the further information or if you are interested in the project.
 
-```json
+```python
 {
     name = "Giorgi Nozadze",
     email = "giorginozadze23@yahoo.com"
