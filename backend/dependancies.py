@@ -9,7 +9,7 @@ pipeline: Pipeline = None
 
 
 def set_pipeline(p: Pipeline) -> Pipeline:
-    """Set the pipeline instance."""
+    """Set the pipeline instance on startup."""
     global pipeline
     pipeline = p
     return pipeline

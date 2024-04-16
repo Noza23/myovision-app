@@ -1,5 +1,5 @@
 fastapi[all]
 hiredis>=2.3.0
-myo-sam @ git+https://github.com/Noza23/myovision-sam.git
+myo-sam[all] @ git+https://github.com/Noza23/myovision-sam.git
 read-roi
 redis>=5.0.0
