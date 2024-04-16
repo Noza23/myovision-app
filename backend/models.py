@@ -98,11 +98,12 @@ class InferenceResponse(BaseModel):
     )
 
 
-class REDIS_KEYS:
+class REDIS_KEYS(BaseModel):
     """Methods to generate key names for Redis data."""
 
-    def __init__(self, prefix: str = "myovision"):
-        self.prefix = prefix
+    prefix: str = Field(
+        description="The prefix for the keys.", default="myovision"
+    )
 
     def result_key(self, hash_str: str) -> str:
         """A key for image hash."""
