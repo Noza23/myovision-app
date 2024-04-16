@@ -52,7 +52,7 @@ Finally, open the browser go to the url the frontend is running.
 
 ## Using Container Images
 
-Both [Backend](https://github.com/Noza23/myovision-app/blob/main/Dockerfile) and [Frontend] contian Dockerfile to build docker images using: ```docker build``` ([docs](https://docs.docker.com/reference/cli/docker/image/build/)).
+Both [Backend](https://github.com/Noza23/myovision-app/blob/main/Dockerfile) and [Frontend](https://github.com/davitchanturia/myovision-app-front/blob/main/Dockerfile) contian Dockerfile to build docker images using: ```docker build``` ([docs](https://docs.docker.com/reference/cli/docker/image/build/)).
 
 
 it can then be conveniently managed with docker-compose: ```docker-compose up``` ([docs](https://docs.docker.com/reference/cli/docker/compose/up/)).
@@ -60,7 +60,7 @@ it can then be conveniently managed with docker-compose: ```docker-compose up```
 
 ## Contact Information
 
-```json
+```python
 {
     name = "Giorgi Nozadze",
     email = "giorginozadze23@yahoo.com"
