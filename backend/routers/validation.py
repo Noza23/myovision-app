@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, Depends, WebSocket
-from fastapi import HTTPException, WebSocketException
+from fastapi import HTTPException, WebSocketException, WebSocketDisconnect
 from redis import asyncio as aioredis  # type: ignore
 
 from myo_sam.inference.pipeline import Pipeline
@@ -87,7 +87,6 @@ async def validation_ws(
     """Websocket for validation mode."""
 
     await websocket.accept()
-    print("Hash Received: ", hash_str)
 
     mo = Myotubes.model_validate_json(
         await redis.get(KEYS.result_key(hash_str))
@@ -98,7 +97,7 @@ async def validation_ws(
     i = state.get_next()
 
     if state.done:
-        websocket.close()
+        await websocket.close()
         return
 
     await websocket.send_json(
@@ -110,7 +109,14 @@ async def validation_ws(
     )
 
     while True:
-        data = int(await websocket.receive_text())
+        if state.done:
+            break
+        try:
+            data = int(await websocket.receive_text())
+        except WebSocketDisconnect:
+            print("Websocket disconnected.")
+            break
+
         if data == 0:
             state.invalid.add(i)
         elif data == 1:
@@ -128,7 +134,7 @@ async def validation_ws(
         step = data != 2 if data != -1 else -1
         i = min(max(i + step, 0), len(mo) - 1)
 
-        if i == len(mo):
+        if i + 1 == len(mo):
             state.done = True
             await redis.mset(
                 {
@@ -136,7 +142,6 @@ async def validation_ws(
                     KEYS.result_key(hash_str): mo.model_dump_json(),
                 }
             )
-            break
 
         # Send next contour
         await websocket.send_json(

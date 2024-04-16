@@ -1,6 +1,6 @@
 from typing import Union, Any
 
-from fastapi import APIRouter, UploadFile, WebSocket
+from fastapi import APIRouter, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi import Depends, File
 from fastapi import HTTPException, WebSocketException
 from redis import asyncio as aioredis  # type: ignore
@@ -114,8 +114,11 @@ async def inference_ws(
         if len(myotubes) + len(nucleis) == 0:
             await websocket.close()
             break
-
-        data = await websocket.receive_json()
+        try:
+            data = await websocket.receive_json()
+        except WebSocketDisconnect:
+            print("Websocket disconnected.")
+            break
         try:
             point = Point.model_validate(data)
         except ValidationError:
