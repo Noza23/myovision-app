@@ -35,7 +35,7 @@ The Backend as well as the Frontend won't be published open-source for now, Cont
 - Local Setup
 
 ```bash
-mv .env.example .env
+cp .env-example .env
 uvicorn backend.main:app --reload
 ```
 
