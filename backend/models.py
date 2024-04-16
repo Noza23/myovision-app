@@ -36,7 +36,7 @@ class Config(BaseModel):
     @classmethod
     def validate_from_json(cls, value):
         if isinstance(value, str):
-            cls.model_validate_json(value)
+            return cls.model_validate_json(value)
         return value
 
 
