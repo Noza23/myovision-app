@@ -1,13 +1,13 @@
 FROM python:3.9.6
 
 RUN apt-get update
-
+# Set the working directory to /app
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+COPY ./requirements.txt /app/requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app
 
-EXPOSE 8000
-
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0"]
