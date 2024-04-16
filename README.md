@@ -11,17 +11,6 @@ It is a RESTful API developed with the FastAPI framework and has a designated Fr
 
 With a slight modification the Backend can be generalized and used for any computer vision project concerning instance segmentation.
 
-## Contact Information
-
-The Backend as well as the Frontend won't be published open-source for now, Contact the maintainer for the further information or if you are interested in the project.
-
-```python
-{
-    name = "Giorgi Nozadze",
-    email = "giorginozadze23@yahoo.com"
-}
-```
-
 ## Visualizations
 
 - Annotation Tool for collecting labeled data
@@ -30,24 +19,50 @@ The Backend as well as the Frontend won't be published open-source for now, Cont
 - Inference Tool for observing model's predictions and relevant metrics
   [Video](https://drive.google.com/file/d/1JFWEre71lWuu_wAtUcogsJ7cMXfV57Or/view?usp=sharing)
 
-# Installation
+# Setup
 
-- Local Setup
+To setup the Application backend locally follow the steps:
 
-```bash
-cp .env-example .env
-uvicorn backend.main:app --reload
-```
+## 1. Get Model Checkpoint
+  - Get the model checkpoint from [link](https://drive.google.com/file/d/1wAlAgqo_NCNnrE8zjQFIkHXpLhTjg3fs/view)
+  - Place it in the *./checkpoints/* directory
 
-- Docker Build
+## 2. Install Dependencies
+  - Install python dependencies using: ```pip install -r requirements.txt```
+  - Install redis: follow the simple instructions based on your OS [link](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
 
-```bash
-docker build -t myovision-app .
-docker run -d --name myovision-app -p 8000:8000 myovision-app
-```
 
-- Docker Compose
+## 3. Set Environment variables
+  - Copy the example .env file: ```cp .env-example .env```
+  - Adjust the default variables in *.env* file if desired
 
-```bash
-docker-compose up -d
+
+# Starting Application
+
+1. **Start Redis**: follow the simple instructions based on your OS [link](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
+
+2. **Start API**:
+    ```shell
+    uvicorn backend.main.app
+    ```
+
+3. **Start Frontend**: Follow the [Instructions](https://github.com/davitchanturia/myovision-app-front?tab=readme-ov-file#setup)
+
+Finally, open the browser go to the url the frontend is running.
+
+## Using Container Images
+
+Both [Backend](https://github.com/Noza23/myovision-app/blob/main/Dockerfile) and [Frontend] contian Dockerfile to build docker images using: ```docker build``` ([docs](https://docs.docker.com/reference/cli/docker/image/build/)).
+
+
+it can then be conveniently managed with docker-compose: ```docker-compose up``` ([docs](https://docs.docker.com/reference/cli/docker/compose/up/)).
+
+
+## Contact Information
+
+```json
+{
+    name = "Giorgi Nozadze",
+    email = "giorginozadze23@yahoo.com"
+}
 ```
