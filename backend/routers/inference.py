@@ -138,3 +138,39 @@ async def inference_ws(
         else:
             resp = {"info_data": {"myotube": None, "clusters": None}}
         await websocket.send_json(resp)
+
+
+@router.get("/get_data/{myotube_hash}/{nuclei_hash}")
+async def get_data(
+    myotube_hash: Union[str, None],
+    nuclei_hash: Union[str, None],
+    redis: aioredis.Redis = Depends(setup_redis),
+) -> dict[str, Any]:
+    """Get the data for specific image."""
+    if myotube_hash and myotube_hash != "null":
+        myotubes = Myotubes.model_validate_json(
+            await redis.get(KEYS.result_key(myotube_hash))
+        )
+    else:
+        myotubes = Myotubes()
+
+    if nuclei_hash and nuclei_hash != "null":
+        nucleis = Nucleis.model_validate_json(
+            await redis.get(KEYS.result_key(nuclei_hash))
+        )
+        clusters = NucleiClusters.compute_clusters(nucleis)
+    else:
+        nucleis = Nucleis()
+
+    if myotubes and nucleis:
+        clusters = NucleiClusters.compute_clusters(nucleis)
+    else:
+        clusters = NucleiClusters()
+
+    return {
+        "myotubes": [myo.model_dump(mode="json") for myo in myotubes],
+        "nucleis": [nucl.model_dump(mode="json") for nucl in nucleis],
+        "nuclei_clusters": [
+            clust.model_dump(mode="json") for clust in clusters
+        ],
+    }
