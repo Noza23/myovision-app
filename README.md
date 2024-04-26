@@ -43,7 +43,7 @@ To setup the Application backend locally follow the steps:
 
 2. **Start API**:
     ```shell
-    uvicorn backend.main.app
+    uvicorn backend.main:app
     ```
 
 3. **Start Frontend**: Follow the [Instructions](https://github.com/davitchanturia/myovision-app-front?tab=readme-ov-file#setup)
