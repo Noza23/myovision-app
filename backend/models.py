@@ -92,24 +92,6 @@ class InferenceResponse(BaseModel):
     )
 
 
-class REDIS_KEYS(BaseModel):
-    """Methods to generate key names for Redis data."""
-
-    prefix: str = Field(description="The prefix for the keys.", default="myovision")
-
-    def result_key(self, hash_str: str) -> str:
-        """A key for image hash."""
-        return f"{self.prefix}:image:{hash_str}"
-
-    def image_path_key(self, hash_str: str) -> str:
-        """A key for image path."""
-        return f"{self.prefix}:image_path:{hash_str}"
-
-    def state_key(self, hash_str: str) -> str:
-        """A key for state."""
-        return f"{self.prefix}:state:{hash_str}"
-
-
 class Point(BaseModel):
     """A point on the image"""
 

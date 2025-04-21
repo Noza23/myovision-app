@@ -12,7 +12,7 @@ from myosam.inference.pipeline import Pipeline
 from myosam.inference.predictors.utils import invert_image
 from redis import asyncio as aioredis  # type: ignore
 
-from backend import KEYS, SETTINGS
+from backend import STATIC_IMAGES_DIR, RedisKeys
 from backend.dependancies import get_pipeline_instance, setup_redis
 from backend.models import Config, State, ValidationResponse
 from backend.utils import get_fp
@@ -39,19 +39,21 @@ async def run_validation(
     if config.general_config.invert_image:
         img_to_send = invert_image(img_to_send)
 
-    if await redis.exists(KEYS.result_key(img_hash)):
+    if await redis.exists(RedisKeys.result_key(img_hash)):
         # Case when image is cached
-        myos = Myotubes.model_validate_json(await redis.get(KEYS.result_key(img_hash)))
+        myos = Myotubes.model_validate_json(
+            await redis.get(RedisKeys.result_key(img_hash))
+        )
         if myos[0].measure_unit != config.general_config.measure_unit:
             myos.adjust_measure_unit(config.general_config.measure_unit)
-            await redis.set(KEYS.result_key(img_hash), myos.model_dump_json())
+            await redis.set(RedisKeys.result_key(img_hash), myos.model_dump_json())
 
-        state_json = await redis.get(KEYS.state_key(img_hash))
+        state_json = await redis.get(RedisKeys.state_key(img_hash))
         if state_json:
             state = State.model_validate_json(state_json)
         else:
             state = State()
-            await redis.set(KEYS.state_key(img_hash), state.model_dump_json())
+            await redis.set(RedisKeys.state_key(img_hash), state.model_dump_json())
         if state.valid:
             img_to_send = pipeline.draw_contours(
                 img_to_send,
@@ -70,11 +72,11 @@ async def run_validation(
 
         await redis.mset(
             {
-                KEYS.result_key(img_hash): myos.model_dump_json(),
-                KEYS.state_key(img_hash): state.model_dump_json(),
+                RedisKeys.result_key(img_hash): myos.model_dump_json(),
+                RedisKeys.state_key(img_hash): state.model_dump_json(),
             }
         )
-    path = get_fp(SETTINGS.images_dir)
+    path = get_fp(STATIC_IMAGES_DIR)
     pipeline.save_image(path, img_to_send)
     return ValidationResponse(image_hash=img_hash, image_path=path)
 
@@ -89,8 +91,8 @@ async def validation_ws(
 
     await websocket.accept()
 
-    mo = Myotubes.model_validate_json(await redis.get(KEYS.result_key(hash_str)))
-    state = State.model_validate_json(await redis.get(KEYS.state_key(hash_str)))
+    mo = Myotubes.model_validate_json(await redis.get(RedisKeys.result_key(hash_str)))
+    state = State.model_validate_json(await redis.get(RedisKeys.state_key(hash_str)))
     i = state.get_next()
 
     if state.done:
@@ -120,14 +122,14 @@ async def validation_ws(
             state.valid.add(i)
         elif data == 2:
             _ = mo.move_object_to_end(i)
-            await redis.set(KEYS.result_key(hash_str), mo.model_dump_json())
+            await redis.set(RedisKeys.result_key(hash_str), mo.model_dump_json())
         elif data == -1:
             state.valid.discard(i)
             state.invalid.discard(i)
         else:
             raise WebSocketException(1008, "⚠️ Invalid data received.")
 
-        await redis.set(KEYS.state_key(hash_str), state.model_dump_json())
+        await redis.set(RedisKeys.state_key(hash_str), state.model_dump_json())
         step = data != 2 if data != -1 else -1
         i = min(max(i + step, 0), len(mo) - 1)
 
@@ -135,8 +137,8 @@ async def validation_ws(
             state.done = True
             await redis.mset(
                 {
-                    KEYS.state_key(hash_str): state.model_dump_json(),
-                    KEYS.result_key(hash_str): mo.model_dump_json(),
+                    RedisKeys.state_key(hash_str): state.model_dump_json(),
+                    RedisKeys.result_key(hash_str): mo.model_dump_json(),
                 }
             )
 

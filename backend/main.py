@@ -10,7 +10,7 @@ from myosam.inference.pipeline import Pipeline
 from read_roi import read_roi_zip
 from redis import asyncio as aioredis  # type: ignore
 
-from backend import KEYS, SETTINGS
+from backend import SETTINGS, STATIC_IMAGES_DIR, RedisKeys
 from backend.dependancies import set_pipeline, setup_redis
 from backend.models import Config, State
 from backend.routers import inference, validation
@@ -29,14 +29,14 @@ async def lifespan(app: FastAPI):
     pipeline._myosam_predictor.set_model(SETTINGS.myosam_model, SETTINGS.device)
     yield
     # print("> Cleaning images directory...")
-    clean_dir(SETTINGS.images_dir)
+    clean_dir(STATIC_IMAGES_DIR)
     # print("> Done.")
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
 app.include_router(router=inference.router)
 app.include_router(validation.router)
-app.mount("/images", StaticFiles(directory=SETTINGS.images_dir), name="images")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,7 +70,7 @@ async def get_contours(
     hash_str: str, redis: aioredis.Redis = Depends(setup_redis)
 ) -> dict[str, list[list[list[int]]]]:
     """Get the contours for specific image."""
-    objs = await redis.get(KEYS.result_key(hash_str))
+    objs = await redis.get(RedisKeys.result_key(hash_str))
     if not objs:
         raise HTTPException(404, "⚠️ Contours not found.")
     objs = MyoObjects.model_validate_json(objs)
@@ -99,8 +99,8 @@ async def upload_contours(
 
     if not coords_lst:
         raise HTTPException(500, detail="⚠️ Failed to read ROIs.")
-    objs_json = await redis.get(KEYS.result_key(hash_str))
-    state = State.model_validate_json(await redis.get(KEYS.state_key(hash_str)))
+    objs_json = await redis.get(RedisKeys.result_key(hash_str))
+    state = State.model_validate_json(await redis.get(RedisKeys.state_key(hash_str)))
     if not objs_json:
         objects = Myotubes()
     else:
@@ -110,6 +110,6 @@ async def upload_contours(
     state.shift_all(len(coords_lst))
     state.valid.update(range(len(coords_lst)))
 
-    await redis.set(KEYS.result_key(hash_str), objects.model_dump_json())
-    await redis.set(KEYS.state_key(hash_str), state.model_dump_json())
+    await redis.set(RedisKeys.result_key(hash_str), objects.model_dump_json())
+    await redis.set(RedisKeys.state_key(hash_str), state.model_dump_json())
     return {"batched_coords": coords_lst}

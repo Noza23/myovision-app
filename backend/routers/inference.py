@@ -15,7 +15,7 @@ from myosam.inference.pipeline import Pipeline
 from pydantic import ValidationError
 from redis import asyncio as aioredis
 
-from backend import KEYS, SETTINGS
+from backend import STATIC_IMAGES_DIR, RedisKeys
 from backend.dependancies import get_pipeline_instance, setup_redis
 from backend.models import Config, InferenceResponse, Point
 from backend.utils import get_fp, preprocess_ws_resp
@@ -39,14 +39,14 @@ async def run_inference(
     myo_cache, nucl_cache = None, None
     pipeline.set_myotube_image(await myotube.read(), myotube.filename)
     img_hash = pipeline.myotube_hash()
-    if await redis.exists(KEYS.result_key(img_hash)):
-        myo_cache = await redis.get(KEYS.result_key(img_hash))
+    if await redis.exists(RedisKeys.result_key(img_hash)):
+        myo_cache = await redis.get(RedisKeys.result_key(img_hash))
 
     if hasattr(nuclei, "filename"):
         pipeline.set_nuclei_image(await nuclei.read(), nuclei.filename)
         img_sec_hash = pipeline.nuclei_hash()
-        if await redis.exists(KEYS.result_key(img_sec_hash)):
-            nucl_cache = await redis.get(KEYS.result_key(img_sec_hash))
+        if await redis.exists(RedisKeys.result_key(img_sec_hash)):
+            nucl_cache = await redis.get(RedisKeys.result_key(img_sec_hash))
     else:
         img_sec_hash = None
 
@@ -65,12 +65,12 @@ async def run_inference(
     )
 
     if hasattr(myotube, "filename") and not myo_cache:
-        await redis.set(KEYS.result_key(img_hash), myos.model_dump_json())
+        await redis.set(RedisKeys.result_key(img_hash), myos.model_dump_json())
     if hasattr(myotube, "filename") and not nucl_cache:
-        await redis.set(KEYS.result_key(img_sec_hash), nucls.model_dump_json())
+        await redis.set(RedisKeys.result_key(img_sec_hash), nucls.model_dump_json())
 
     # Overlay contours on main image
-    path = get_fp(SETTINGS.images_dir)
+    path = get_fp(STATIC_IMAGES_DIR)
     img = pipeline.draw_contours_on_myotube_image(myotubes=myos, nucleis=nucls)
     pipeline.save_image(path, img)
 
@@ -92,14 +92,14 @@ async def inference_ws(
     """Websocket for inference mode."""
     if hash_str and hash_str != "null":
         myotubes = Myotubes.model_validate_json(
-            await redis.get(KEYS.result_key(hash_str))
+            await redis.get(RedisKeys.result_key(hash_str))
         )
     else:
         myotubes = Myotubes()
 
     if sec_hash_str and sec_hash_str != "null":
         nucleis = Nucleis.model_validate_json(
-            await redis.get(KEYS.result_key(sec_hash_str))
+            await redis.get(RedisKeys.result_key(sec_hash_str))
         )
     else:
         nucleis = Nucleis()
@@ -151,14 +151,14 @@ async def get_data(
     """Get the data for specific image."""
     if myotube_hash and myotube_hash != "null":
         myotubes = Myotubes.model_validate_json(
-            await redis.get(KEYS.result_key(myotube_hash))
+            await redis.get(RedisKeys.result_key(myotube_hash))
         )
     else:
         myotubes = Myotubes()
 
     if nuclei_hash and nuclei_hash != "null":
         nucleis = Nucleis.model_validate_json(
-            await redis.get(KEYS.result_key(nuclei_hash))
+            await redis.get(RedisKeys.result_key(nuclei_hash))
         )
         clusters = NucleiClusters.compute_clusters(nucleis)
     else:
