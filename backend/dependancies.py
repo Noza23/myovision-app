@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from myo_sam.inference.pipeline import Pipeline
+from myosam.inference.pipeline import Pipeline
 from redis import asyncio as aioredis  # type: ignore
 
 from backend import SETTINGS

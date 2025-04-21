@@ -7,9 +7,9 @@ from fastapi import (
     WebSocketDisconnect,
     WebSocketException,
 )
-from myo_sam.inference.models.base import Myotubes
-from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.predictors.utils import invert_image
+from myosam.inference.models.base import Myotubes
+from myosam.inference.pipeline import Pipeline
+from myosam.inference.predictors.utils import invert_image
 from redis import asyncio as aioredis  # type: ignore
 
 from backend import KEYS, SETTINGS

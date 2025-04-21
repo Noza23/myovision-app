@@ -10,10 +10,10 @@ from fastapi import (
     WebSocketDisconnect,
     WebSocketException,
 )
-from myo_sam.inference.models.base import Myotubes, NucleiClusters, Nucleis
-from myo_sam.inference.pipeline import Pipeline
+from myosam.inference.models.base import Myotubes, NucleiClusters, Nucleis
+from myosam.inference.pipeline import Pipeline
 from pydantic import ValidationError
-from redis import asyncio as aioredis  # type: ignore
+from redis import asyncio as aioredis
 
 from backend import KEYS, SETTINGS
 from backend.dependancies import get_pipeline_instance, setup_redis

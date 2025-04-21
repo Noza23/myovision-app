@@ -12,8 +12,8 @@ python = ">=3.12"
 fastapi = {extras = ["standard"], version = "^0.115.12"}
 redis = {extras = ["hiredis"], version = "^5.2.1"}
 read-roi = "^1.6.0"
-myosam = {git = "https://github.com/Noza23/myovision-sam.git", rev = "main", extras = ["all"]}
 pydantic-settings = "^2.9.1"
+myosam = {git = "https://github.com/Noza23/myovision-sam.git", extras = ["inference", "stardist"]}
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.2.0"

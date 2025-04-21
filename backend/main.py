@@ -5,8 +5,8 @@ from typing import Any
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from myo_sam.inference.models.base import MyoObjects, Myotubes
-from myo_sam.inference.pipeline import Pipeline
+from myosam.inference.models.base import MyoObjects, Myotubes
+from myosam.inference.pipeline import Pipeline
 from read_roi import read_roi_zip
 from redis import asyncio as aioredis  # type: ignore
 

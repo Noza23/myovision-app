@@ -1,6 +1,6 @@
 from typing import Union
 
-from myo_sam.inference.predictors.config import AmgConfig
+from myosam.inference.predictors.config import AmgConfig
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
 
