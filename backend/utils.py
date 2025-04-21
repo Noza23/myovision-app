@@ -1,6 +1,6 @@
-from typing import Any
-import uuid
 import os
+import uuid
+from typing import Any
 
 
 def get_fp(directory: str, suffix: str = ".png") -> str:

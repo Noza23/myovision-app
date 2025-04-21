@@ -1,16 +1,21 @@
-from fastapi import APIRouter, UploadFile, Depends, WebSocket
-from fastapi import HTTPException, WebSocketException, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+)
+from myosam.inference.models.base import Myotubes
+from myosam.inference.pipeline import Pipeline
+from myosam.inference.predictors.utils import invert_image
 from redis import asyncio as aioredis  # type: ignore
 
-from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Myotubes
-from myo_sam.inference.predictors.utils import invert_image
-
 from backend import KEYS, SETTINGS
-from backend.utils import get_fp
-from backend.models import Config, ValidationResponse, State
 from backend.dependancies import get_pipeline_instance, setup_redis
-
+from backend.models import Config, State, ValidationResponse
+from backend.utils import get_fp
 
 router = APIRouter(
     prefix="/validation",
@@ -36,9 +41,7 @@ async def run_validation(
 
     if await redis.exists(KEYS.result_key(img_hash)):
         # Case when image is cached
-        myos = Myotubes.model_validate_json(
-            await redis.get(KEYS.result_key(img_hash))
-        )
+        myos = Myotubes.model_validate_json(await redis.get(KEYS.result_key(img_hash)))
         if myos[0].measure_unit != config.general_config.measure_unit:
             myos.adjust_measure_unit(config.general_config.measure_unit)
             await redis.set(KEYS.result_key(img_hash), myos.model_dump_json())
@@ -63,9 +66,7 @@ async def run_validation(
         try:
             myos = pipeline.execute().information_metrics.myotubes
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"⚠️ Pipeline has failed: {e}"
-            )
+            raise HTTPException(status_code=500, detail=f"⚠️ Pipeline has failed: {e}")
 
         await redis.mset(
             {
@@ -88,12 +89,8 @@ async def validation_ws(
 
     await websocket.accept()
 
-    mo = Myotubes.model_validate_json(
-        await redis.get(KEYS.result_key(hash_str))
-    )
-    state = State.model_validate_json(
-        await redis.get(KEYS.state_key(hash_str))
-    )
+    mo = Myotubes.model_validate_json(await redis.get(KEYS.result_key(hash_str)))
+    state = State.model_validate_json(await redis.get(KEYS.state_key(hash_str)))
     i = state.get_next()
 
     if state.done:
@@ -114,7 +111,7 @@ async def validation_ws(
         try:
             data = int(await websocket.receive_text())
         except WebSocketDisconnect:
-            print("Websocket disconnected.")
+            # print("Websocket disconnected.")
             break
 
         if data == 0:

@@ -1,7 +1,6 @@
 from fastapi import HTTPException
+from myosam.inference.pipeline import Pipeline
 from redis import asyncio as aioredis  # type: ignore
-
-from myo_sam.inference.pipeline import Pipeline
 
 from backend import SETTINGS
 
@@ -23,9 +22,7 @@ def get_pipeline_instance() -> Pipeline:
 async def setup_redis() -> aioredis.Redis:
     """Get a Redis connection."""
     try:
-        redis = await aioredis.from_url(
-            SETTINGS.redis_url, decode_responses=True
-        )
+        redis = await aioredis.from_url(SETTINGS.redis_url, decode_responses=True)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"⚠️ Failed to connect to Redis: {e}"
