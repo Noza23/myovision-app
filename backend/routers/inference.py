@@ -1,20 +1,24 @@
-from typing import Union, Any
+from typing import Any, Union
 
-from fastapi import APIRouter, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi import Depends, File
-from fastapi import HTTPException, WebSocketException
-from redis import asyncio as aioredis  # type: ignore
-from pydantic import ValidationError
-
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+)
+from myo_sam.inference.models.base import Myotubes, NucleiClusters, Nucleis
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Myotubes, Nucleis, NucleiClusters
-
+from pydantic import ValidationError
+from redis import asyncio as aioredis  # type: ignore
 
 from backend import KEYS, SETTINGS
-from backend.utils import get_fp, preprocess_ws_resp
-from backend.models import Config, InferenceResponse, Point
 from backend.dependancies import get_pipeline_instance, setup_redis
-
+from backend.models import Config, InferenceResponse, Point
+from backend.utils import get_fp, preprocess_ws_resp
 
 router = APIRouter(
     prefix="/inference",
@@ -53,9 +57,7 @@ async def run_inference(
     try:
         result = pipeline.execute(myo_cache, nucl_cache).information_metrics
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"⚠️ Pipeline has failed: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"⚠️ Pipeline has failed: {e}")
 
     myos, nucls = result.myotubes, result.nucleis
     general_info = preprocess_ws_resp(
@@ -117,7 +119,7 @@ async def inference_ws(
         try:
             data = await websocket.receive_json()
         except WebSocketDisconnect:
-            print("Websocket disconnected.")
+            # print("Websocket disconnected.")
             break
         try:
             point = Point.model_validate(data)
@@ -170,7 +172,5 @@ async def get_data(
     return {
         "myotubes": [myo.model_dump(mode="json") for myo in myotubes],
         "nucleis": [nucl.model_dump(mode="json") for nucl in nucleis],
-        "nuclei_clusters": [
-            clust.model_dump(mode="json") for clust in clusters
-        ],
+        "nuclei_clusters": [clust.model_dump(mode="json") for clust in clusters],
     }

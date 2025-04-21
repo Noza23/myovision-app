@@ -1,23 +1,20 @@
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Any
-import tempfile
 
-from fastapi import FastAPI, UploadFile, HTTPException
-from fastapi import File, Depends
-from fastapi.staticfiles import StaticFiles
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from redis import asyncio as aioredis  # type: ignore
-from read_roi import read_roi_zip
-
+from fastapi.staticfiles import StaticFiles
+from myo_sam.inference.models.base import MyoObjects, Myotubes
 from myo_sam.inference.pipeline import Pipeline
-from myo_sam.inference.models.base import Myotubes, MyoObjects
+from read_roi import read_roi_zip
+from redis import asyncio as aioredis  # type: ignore
 
-from backend import SETTINGS, KEYS
+from backend import KEYS, SETTINGS
+from backend.dependancies import set_pipeline, setup_redis
 from backend.models import Config, State
 from backend.routers import inference, validation
 from backend.utils import clean_dir
-from backend.dependancies import set_pipeline, setup_redis
-
 
 origins = ["*"]
 
@@ -26,16 +23,14 @@ origins = ["*"]
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
     pipeline = set_pipeline(Pipeline())
-    print("> Loading Stardist model...")
+    # print("> Loading Stardist model...")
     pipeline._stardist_predictor.set_model(SETTINGS.stardist_model)
-    print("> Loading Myosam model...")
-    pipeline._myosam_predictor.set_model(
-        SETTINGS.myosam_model, SETTINGS.device
-    )
+    # print("> Loading Myosam model...")
+    pipeline._myosam_predictor.set_model(SETTINGS.myosam_model, SETTINGS.device)
     yield
-    print("> Cleaning images directory...")
+    # print("> Cleaning images directory...")
     clean_dir(SETTINGS.images_dir)
-    print("> Done.")
+    # print("> Done.")
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
@@ -99,16 +94,13 @@ async def upload_contours(
             f.close()
 
     coords_lst = [
-        [[x, y] for x, y in zip(roi["x"], roi["y"])]
-        for _, roi in rois_myotubes.items()
+        [[x, y] for x, y in zip(roi["x"], roi["y"])] for _, roi in rois_myotubes.items()
     ]
 
     if not coords_lst:
         raise HTTPException(500, detail="⚠️ Failed to read ROIs.")
     objs_json = await redis.get(KEYS.result_key(hash_str))
-    state = State.model_validate_json(
-        await redis.get(KEYS.state_key(hash_str))
-    )
+    state = State.model_validate_json(await redis.get(KEYS.state_key(hash_str)))
     if not objs_json:
         objects = Myotubes()
     else:

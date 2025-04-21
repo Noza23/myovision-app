@@ -1,9 +1,8 @@
 from typing import Union
 
-from pydantic_settings import BaseSettings
-from pydantic import BaseModel, model_validator, Field
-
 from myo_sam.inference.predictors.config import AmgConfig
+from pydantic import BaseModel, Field, model_validator
+from pydantic_settings import BaseSettings
 
 
 class GeneralConfig(BaseModel):
@@ -57,9 +56,7 @@ class State(BaseModel):
     """Validation state."""
 
     valid: set[int] = Field(description="valid contours.", default_factory=set)
-    invalid: set[int] = Field(
-        description="invalid contours.", default_factory=set
-    )
+    invalid: set[int] = Field(description="invalid contours.", default_factory=set)
     done: bool = Field(description="validation done.", default=False)
 
     def get_next(self) -> int:
@@ -86,9 +83,7 @@ class InferenceResponse(BaseModel):
     """Inference response."""
 
     image_path: str = Field(description="The path of the image.")
-    image_hash: Union[str, None] = Field(
-        description="The hash string of the image."
-    )
+    image_hash: Union[str, None] = Field(description="The hash string of the image.")
     image_secondary_hash: Union[str, None] = Field(
         description="The hash string of the secondary image."
     )
@@ -100,9 +95,7 @@ class InferenceResponse(BaseModel):
 class REDIS_KEYS(BaseModel):
     """Methods to generate key names for Redis data."""
 
-    prefix: str = Field(
-        description="The prefix for the keys.", default="myovision"
-    )
+    prefix: str = Field(description="The prefix for the keys.", default="myovision")
 
     def result_key(self, hash_str: str) -> str:
         """A key for image hash."""

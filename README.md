@@ -28,8 +28,12 @@ To setup the Application backend locally follow the steps:
   - Place it in the *./checkpoints/* directory
 
 ## 2. Install Dependencies
-  - Install python dependencies using: ```pip install -r requirements.txt```
-  - Install redis: follow the simple instructions based on your OS [link](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
+  1. ***Python Dependencies:***
+
+      - For the depdenceny management we use Poetry, for installation follow the instructions [link](https://python-poetry.org/docs/#installation), After installing Poetry, you can install the dependencies using: `poetry install`
+  2. ***Redis***:
+
+      - In order to install redis, follow the instructions based on your OS [link](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
 
 
 ## 3. Set Environment variables
@@ -43,7 +47,7 @@ To setup the Application backend locally follow the steps:
 
 2. **Start API**:
     ```shell
-    uvicorn backend.main:app
+    fastapi run backend/main.py
     ```
 
 3. **Start Frontend**: Follow the [Instructions](https://github.com/davitchanturia/myovision-app-front?tab=readme-ov-file#setup)
