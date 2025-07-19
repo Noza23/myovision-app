@@ -21,7 +21,7 @@ repos:
       - id: pydocstyle
         args:
           - --convention=google
-          - --add-ignore=D100 # ignore module docstrings
+          - --add-ignore=D100,D104 # Ignore missing docstrings in modules
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0

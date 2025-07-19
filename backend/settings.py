@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     """Path to the StarDist model."""
     device: str
     """Device to use for computation (e.g., 'cpu', 'cuda')."""
+    cache_dir: str = "static/images"
+    """Directory for caching images."""
 
 
 @lru_cache(maxsize=1)

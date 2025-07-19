@@ -20,11 +20,7 @@ from backend.dependancies import get_pipeline_instance, setup_redis
 from backend.models import Config, InferenceResponse, Point
 from backend.utils import get_fp, preprocess_ws_resp
 
-router = APIRouter(
-    prefix="/inference",
-    tags=["inference"],
-    responses={404: {"description": "Not found"}},
-)
+router = APIRouter()
 
 
 @router.post("/", response_model=InferenceResponse)

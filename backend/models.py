@@ -1,8 +1,33 @@
-from typing import Union
+from typing import Self, Union
 
 from myosam.inference.predictors.config import AmgConfig
 from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings
+
+
+class HealthCheck(BaseModel):
+    """Health check response model."""
+
+    status: str = "OK"
+
+
+class RootInfo(BaseModel):
+    """Root endpoint response model."""
+
+    message: str = "App developed for the MyoVision project 🚀"
+
+
+class Contour(BaseModel):
+    """Single contour in an image."""
+
+    coords: list[list[int]]
+    """Coordinates in N-dim space, where each point is represented by list(n)"""
+
+
+class ImageContours(BaseModel):
+    """Response model for all contours in an image."""
+
+    contours: list[Contour]
+    """List of all contours in an image."""
 
 
 class GeneralConfig(BaseModel):
@@ -34,22 +59,10 @@ class Config(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_from_json(cls, value):
+        """Validate if the input is a JSON string and parse it."""
         if isinstance(value, str):
             return cls.model_validate_json(value)
         return value
-
-
-class Settings(BaseSettings):
-    """App confiuration."""
-
-    redis_url: str = Field(description="Redis URL.")
-    myosam_model: str = Field(description="MyoSam model path.")
-    stardist_model: str = Field(description="StarDist model path.")
-    images_dir: str = Field(description="Images directory.")
-    backend_port: int = Field(description="Backend port.", ge=0)
-    frontend_port: int = Field(description="Frontend port.", ge=0)
-    web_concurrency: int = Field(description="Web concurrency.", ge=0)
-    device: str = Field(description="Device to use for computation.")
 
 
 class State(BaseModel):
@@ -58,6 +71,11 @@ class State(BaseModel):
     valid: set[int] = Field(description="valid contours.", default_factory=set)
     invalid: set[int] = Field(description="invalid contours.", default_factory=set)
     done: bool = Field(description="validation done.", default=False)
+
+    @classmethod
+    def empty(cls) -> Self:
+        """Create an empty state."""
+        return cls(valid=set(), invalid=set(), done=False)
 
     def get_next(self) -> int:
         """Get the next contour index."""
@@ -70,6 +88,7 @@ class State(BaseModel):
         """Shift all indices."""
         self.valid = {i + shift for i in self.valid}
         self.invalid = {i + shift for i in self.invalid}
+        self.valid.update(range(shift))
 
 
 class ValidationResponse(BaseModel):
@@ -93,7 +112,7 @@ class InferenceResponse(BaseModel):
 
 
 class Point(BaseModel):
-    """A point on the image"""
+    """A point on the image."""
 
     x: int = Field(description="x coordinate of the point", ge=0)
     y: int = Field(description="y coordinate of the point", ge=0)
