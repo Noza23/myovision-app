@@ -74,9 +74,7 @@ def get_config_chema() -> dict[str, str]:
     return Config.model_json_schema()["$defs"]
 
 
-async def _redis_connection_error_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def _redis_connection_error_handler(request: Request, exc: Exception):
     """Handle Redis connection errors."""
     logger.info(f"Redis Error occured when processing request for {request.url.path}")
     logger.error(exc, exc_info=True)
