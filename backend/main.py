@@ -36,7 +36,8 @@ app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
 app.include_router(contours_router, prefix="/contours", tags=["contours"])
 app.include_router(inference_router, prefix="/inference", tags=["inference"])
 app.include_router(validation_router, prefix="/validation", tags=["validation"])
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount(get_settings().cache_dir, StaticFiles(directory=get_settings().cache_dir))
+
 
 app.add_middleware(
     CORSMiddleware,
