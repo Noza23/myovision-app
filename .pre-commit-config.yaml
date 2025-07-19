@@ -15,13 +15,13 @@ repos:
         args: [ --fix ]
       - id: ruff-format
 
-  # - repo: https://github.com/pycqa/pydocstyle # TODO: bring back
-  #   rev: 6.3.0
-  #   hooks:
-  #     - id: pydocstyle
-  #       exclude: (^tests)
-  #       args:
-  #         - --convention=google
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        args:
+          - --convention=google
+          - --add-ignore=D100
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
