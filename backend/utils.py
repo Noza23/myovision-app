@@ -8,12 +8,6 @@ def get_fp(directory: str, suffix: str = ".png") -> str:
     return os.path.join(directory, f"{uuid.uuid4().hex}{suffix}")
 
 
-def cleanup_dir(directory: str) -> None:
-    """Clean the directory."""
-    for f in os.listdir(directory):
-        os.remove(os.path.join(directory, f))
-
-
 def preprocess_ws_resp(data: dict[str, Any], exclude: list[str] = []) -> dict:
     """Preprocess data before sending through websocket."""
     data_post: dict[str, Any] = {}

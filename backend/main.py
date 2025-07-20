@@ -15,7 +15,6 @@ from backend.routers.inference import router as inference_router
 from backend.routers.validation import router as validation_router
 from backend.services import MyoSam, Redis
 from backend.settings import get_settings
-from backend.utils import cleanup_dir
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +22,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    MyoSam.setup()
     assert setup_logging(get_settings().log_level)
+    MyoSam.setup()    
 
     yield
 
-    cleanup_dir(get_settings().cache_dir)  # Clean up cache directory
     MyoSam.cleanup()
     await Redis.close()
     await asyncio.sleep(0)  # Graceful shutdown
@@ -38,7 +36,7 @@ app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
 app.include_router(contours_router, prefix="/contours", tags=["contours"])
 app.include_router(inference_router, prefix="/inference", tags=["inference"])
 app.include_router(validation_router, prefix="/validation", tags=["validation"])
-app.mount(get_settings().cache_dir, StaticFiles(directory=get_settings().cache_dir))
+app.mount(MyoSam.cache_dir, StaticFiles(directory=MyoSam.cache_dir), name="cache")
 
 
 app.add_middleware(
