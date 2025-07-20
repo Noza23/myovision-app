@@ -1,5 +1,3 @@
-from typing import Self, Union
-
 from myosam.inference.predictors.config import AmgConfig
 from pydantic import BaseModel, Field, model_validator
 
@@ -34,11 +32,13 @@ class GeneralConfig(BaseModel):
     """General configuration for the pipeline."""
 
     measure_unit: float = Field(
-        description="The measure unit for the image", default=1.0, ge=0.0
+        default=1.0,
+        ge=0.0,
+        description="The measure unit for the uploaded image.",
     )
     invert_image: bool = Field(
-        description="Whether to invert the image (for visualization only)",
         default=False,
+        description="Whether to invert the image (for visualization only).",
     )
 
 
@@ -46,13 +46,13 @@ class Config(BaseModel):
     """Configuration for the pipeline."""
 
     amg_config: AmgConfig = Field(
-        description="Config for AMG algorithm.",
         default_factory=AmgConfig,
+        description="Config for AMG (Auto Mask Generation) algorithm.",
         title="AMG Config",
     )
     general_config: GeneralConfig = Field(
-        description="General Pipeline Config.",
         default_factory=GeneralConfig,
+        description="General configuration for the pipeline.",
         title="General Config",
     )
 
@@ -68,14 +68,12 @@ class Config(BaseModel):
 class State(BaseModel):
     """Validation state."""
 
-    valid: set[int] = Field(description="valid contours.", default_factory=set)
-    invalid: set[int] = Field(description="invalid contours.", default_factory=set)
-    done: bool = Field(description="validation done.", default=False)
-
-    @classmethod
-    def empty(cls) -> Self:
-        """Create an empty state."""
-        return cls(valid=set(), invalid=set(), done=False)
+    valid: set[int] = Field(default_factory=set)
+    """Set of indicies of valid contours."""
+    invalid: set[int] = Field(default_factory=set)
+    """Set of indicies of invalid contours."""
+    done: bool = Field(default=False)
+    """Wtether the validation is done or not."""
 
     def get_next(self) -> int:
         """Get the next contour index."""
@@ -84,38 +82,42 @@ class State(BaseModel):
             return 0
         return max(combined) + 1
 
-    def shift_all(self, shift: int) -> None:
-        """Shift all indices."""
+    def shift_positive(self, shift: int) -> None:
+        """Shift all indices to the right, assuming all indices are positive."""
         self.valid = {i + shift for i in self.valid}
         self.invalid = {i + shift for i in self.invalid}
-        self.valid.update(range(shift))
+        return self.valid.update(range(shift))
 
 
 class ValidationResponse(BaseModel):
-    """Validation response."""
+    """Response model for validation endpoint."""
 
-    image_hash: str = Field(description="The hash string of the image.")
-    image_path: str = Field(description="The path of the image.")
+    image_hash: str
+    """Image Hash, that is treated as a unique identifier across the application."""
+    image_path: str
+    """Image path in the static cache directory."""
 
 
 class InferenceResponse(BaseModel):
     """Inference response."""
 
-    image_path: str = Field(description="The path of the image.")
-    image_hash: Union[str, None] = Field(description="The hash string of the image.")
-    image_secondary_hash: Union[str, None] = Field(
-        description="The hash string of the secondary image."
-    )
-    general_info: dict[str, Union[str, float]] = Field(
-        description="General information about segmentation"
-    )
+    image_path: str
+    """Path to the image with contours overlayed."""
+    image_hash: str | None
+    """Image hash, that is treated as a unique identifier across the application."""
+    image_secondary_hash: str | None
+    """Secondary image hash, that is treated as a unique identifier across the application."""
+    general_info: dict[str, str | float]
+    """General information about the inference."""
 
 
 class Point(BaseModel):
     """A point on the image."""
 
-    x: int = Field(description="x coordinate of the point", ge=0)
-    y: int = Field(description="y coordinate of the point", ge=0)
+    x: int = Field(ge=0)
+    """x coordinate of the point."""
+    y: int = Field(ge=0)
+    """y coordinate of the point."""
 
     def to_tuple(self) -> tuple[int, int]:
         """Convert to tuple."""

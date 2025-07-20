@@ -40,11 +40,11 @@ async def get_validation_state_by_id(image_id: str) -> State:
     """Get validation state from Redis by image ID."""
     logger.info(f"Fetching validation state for image ID: {image_id}")
     if (state_json := await Redis.get_state_by_id(image_id)) is None:
-        return State.empty()
+        return State()  # Return an empty state if not found
     return State.model_validate_json(state_json)
 
 
-StateByID = Annotated[State, Depends(get_validation_state_by_id)]
+ValidationStateByID = Annotated[State, Depends(get_validation_state_by_id)]
 
 
 ROIZip = Annotated[bytes, File(description="ImageJ generated .zip file with ROIs")]

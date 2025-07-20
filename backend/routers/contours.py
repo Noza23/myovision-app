@@ -4,7 +4,12 @@ from anyio import NamedTemporaryFile
 from fastapi import APIRouter, HTTPException, status
 from read_roi import read_roi_zip
 
-from backend.dependencies import ImageContoursByID, ImageObjectsByID, ROIZip, StateByID
+from backend.dependencies import (
+    ImageContoursByID,
+    ImageObjectsByID,
+    ROIZip,
+    ValidationStateByID,
+)
 from backend.models import Contour, ImageContours
 from backend.services import Redis
 
@@ -21,15 +26,15 @@ async def get_contours(contours: ImageContoursByID) -> ImageContours:
 
 @router.patch("/{image_id}/upload")
 async def upload_contours(
-    image_id: str, objects: ImageObjectsByID, state: StateByID, file: ROIZip
+    image_id: str, objects: ImageObjectsByID, state: ValidationStateByID, file: ROIZip
 ):
-    """Upload contours from a zip file."""
+    """Upload contours from a ROI zip file exported from ImageJ."""
     if not (coords := await load_coords_from_zip(file)):
         logger.warning(f"Empty contours uploaded for image ID {image_id}.")
         return ImageContours(contours=[])
     objects.add_instances_from_coords(coords)
     # NOTE: Append contours to the State. we assume all uploaded contours are valid.
-    state.shift_all(len(coords))
+    state.shift_positive(len(coords))
     await Redis.set_by_id(image_id, objects.model_dump_json())
     await Redis.set_state_by_id(image_id, state.model_dump_json())
     return ImageContours(contours=[Contour(coords=x) for x in coords])
