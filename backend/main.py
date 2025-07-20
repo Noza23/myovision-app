@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis.exceptions import ConnectionError, TimeoutError
 
+from backend.logger import setup_logging
 from backend.models import Config, HealthCheck, RootInfo
 from backend.routers.contours import router as contours_router
 from backend.routers.inference import router as inference_router
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
     MyoSam.setup()
+    assert setup_logging(get_settings().log_level)
 
     yield
 
