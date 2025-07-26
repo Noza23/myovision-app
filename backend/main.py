@@ -3,6 +3,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
     assert setup_logging(get_settings().log_level)
-    MyoSam.setup()    
+    MyoSam.setup()
 
     yield
 
@@ -88,3 +90,11 @@ async def _redis_connection_error_handler(request: Request, exc: Exception):
 
 app.add_exception_handler(ConnectionError, _redis_connection_error_handler)
 app.add_exception_handler(TimeoutError, _redis_connection_error_handler)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors."""
+    logger.error(f"Validation error for request {request.url.path}")
+    logger.debug(exc, exc_info=True)
+    return await request_validation_exception_handler(request, exc)

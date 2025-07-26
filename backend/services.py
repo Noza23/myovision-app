@@ -1,43 +1,101 @@
-import os
 import logging
+import os
 from pathlib import Path
+from typing import TypeAlias, TypeVar
+from uuid import uuid4
 
+from myosam.inference.models.base import MyoObjects, Myotubes, Nucleis
 from myosam.inference.pipeline import Pipeline
+from pydantic import BaseModel
 from redis.asyncio.client import Redis as _Redis
 
+from backend.models import State
 from backend.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T", bound=BaseModel)
+Value : TypeAlias = str | BaseModel
+
+
 class MyoRedis(_Redis):
     """Redis client for MyoVision application."""
 
-    prefix: str = "myovision"
+    prefix = "myovision"
 
     @classmethod
-    def key(cls, image_id: str) -> str:
-        """A Key for identifying results of the given image."""
-        return f"{cls.prefix}:image:{image_id}"
+    def objects_key(cls, image_id: str) -> str:
+        """A Key for identifying objects for the given image ID."""
+        return f"{cls.prefix}:objects:{image_id}"
 
+    @classmethod
     def state_key(cls, image_id: str) -> str:
-        """A Key for identifying validation state of the given image."""
+        """A Key for identifying validation state for the given image ID."""
         return f"{cls.prefix}:state:{image_id}"
 
-    async def get_by_id(self, image_id: str) -> str | None:
-        """Get value by image id which in most cases is a hash string."""
-        return await self.get(name=self.key(image_id))
+    @staticmethod
+    def _serialize_value(value: Value) -> str:
+        """Serialize Value type to a string representation for Redis storage."""
+        return value if isinstance(value, str) else value.model_dump_json()
 
-    async def set_by_id(self, image_id: str, value: str) -> bool | None:
-        """Set value by image id which in most cases is a hash string."""
-        return await self.set(name=self.key(image_id), value=value)
+    async def get_by_key(self, key: str, model: type[T]) -> T | None:
+        """Get value by key and deserialize it to the given model."""
+        logger.info(f"[GET] {model.__name__} for key: {key}")
+        if not (value := await self.get(key)):
+            logger.info(f"[NOT_FOUND] {model.__name__} for key: {key}")
+            return None
+        return model.model_validate_json(value)
 
-    async def get_state_by_id(self, image_id: str) -> str | None:
-        """Get validation state by image id."""
-        return await self.get(name=self.state_key(image_id))
+    async def set_by_key(self, key: str, value: Value) -> bool | None:
+        """Set value by key (serializing it if needed)."""
+        logger.info(f"[SET] {type(value).__name__} for key: {key}")
+        return await self.set(key, value=self._serialize_value(value))
 
-    async def set_state_by_id(self, image_id: str, value: str) -> bool | None:
-        """Set validation state by image id."""
-        return await self.set(name=self.state_key(image_id), value=value)
+    async def mset_by_key(self, mapping: dict[str, Value]) -> bool | None:
+        """Set multiple values by keys (serializing them if needed)."""
+        return await self.mset(
+            {
+                k: (
+                    logger.info(  # type: ignore[func-returns-value]
+                        f"[MSET] {type(v).__name__} for key: {k}"
+                    )
+                    or self._serialize_value(v)
+                )
+                for k, v in mapping.items()
+            }
+        )
+
+    async def get_state_by_id(self, image_id: str) -> State | None:
+        """Get validation state by image ID."""
+        return await self.get_by_key(self.state_key(image_id), model=State)
+
+    async def get_myoobjects_by_id(self, image_id: str) -> MyoObjects | None:
+        """Get General MyoObjects by image ID (useful when we only need contours)."""
+        return await self.get_by_key(self.objects_key(image_id), model=MyoObjects)
+
+    async def get_myotoubes_by_id(self, image_id: str) -> Myotubes | None:
+        """Get Myotubes by image ID."""
+        return await self.get_by_key(self.objects_key(image_id), model=Myotubes)
+
+    async def get_nucleis_by_id(self, image_id: str) -> Nucleis | None:
+        """Get Nucleis by image ID."""
+        return await self.get_by_key(self.objects_key(image_id), model=Nucleis)
+
+    async def set_objects_by_id(self, image_id: str, value: Value) -> bool | None:
+        """Set MyoObjects by image ID."""
+        return await self.set_by_key(self.objects_key(image_id), value=value)
+
+    async def set_state_by_id(self, image_id: str, value: Value) -> bool | None:
+        """Set validation State by image ID."""
+        return await self.set_by_key(self.state_key(image_id), value=value)
+
+    async def set_objects_and_state_by_id(
+        self, image_id: str, objects: Value, state: Value
+    ) -> bool | None:
+        """Set both MyoObjects and State by image ID."""
+        return await self.mset_by_key(
+            {self.objects_key(image_id): objects, self.state_key(image_id): state}
+        )
 
 
 class MyoSamManager:
@@ -80,10 +138,17 @@ class MyoSamManager:
         self._cleanup_cache()
         self._isetup = False
 
+    def gen_unique_fp(self, suffix: str = ".png") -> str:
+        """Generate a unique file path in the cache directory."""
+        return os.path.join(self.cache_dir, f"{uuid4().hex}{suffix}")
+
     def _cleanup_cache(self) -> None:
         """Cleanup all files in the specified directory."""
         logger.info(f"Cleaning up cache directory: {self.cache_path}")
-        return [os.remove(f) for f in self.cache_path.glob("*") if f.is_file()]
+        for f in self.cache_path.glob("*"):
+            if f.is_file():
+                logger.info(f"Removing file: {f}")
+                f.unlink()
 
     def get_pipeline(self) -> Pipeline:
         """Get the configured pipeline."""

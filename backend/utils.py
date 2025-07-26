@@ -1,11 +1,4 @@
-import os
-import uuid
 from typing import Any
-
-
-def get_fp(directory: str, suffix: str = ".png") -> str:
-    """Get UUID based file path."""
-    return os.path.join(directory, f"{uuid.uuid4().hex}{suffix}")
 
 
 def preprocess_ws_resp(data: dict[str, Any], exclude: list[str] = []) -> dict:

@@ -5,10 +5,10 @@ from fastapi import APIRouter, HTTPException, status
 from read_roi import read_roi_zip
 
 from backend.dependencies import (
-    ImageContoursByID,
-    ImageObjectsByID,
+    ContoursByID,
+    ObjectsByID,
     ROIZip,
-    ValidationStateByID,
+    StateByID,
 )
 from backend.models import Contour, ImageContours
 from backend.services import Redis
@@ -19,14 +19,14 @@ router = APIRouter()
 
 
 @router.get("/{image_id}")
-async def get_contours(contours: ImageContoursByID) -> ImageContours:
+async def get_contours(contours: ContoursByID) -> ImageContours:
     """Get contours for a specific image by image ID."""
     return contours
 
 
 @router.patch("/{image_id}/upload")
 async def upload_contours(
-    image_id: str, objects: ImageObjectsByID, state: ValidationStateByID, file: ROIZip
+    image_id: str, objects: ObjectsByID, state: StateByID, file: ROIZip
 ):
     """Upload contours from a ROI zip file exported from ImageJ."""
     if not (coords := await load_coords_from_zip(file)):
@@ -35,8 +35,7 @@ async def upload_contours(
     objects.add_instances_from_coords(coords)
     # NOTE: Append contours to the State. we assume all uploaded contours are valid.
     state.shift_positive(len(coords))
-    await Redis.set_by_id(image_id, objects.model_dump_json())
-    await Redis.set_state_by_id(image_id, state.model_dump_json())
+    await Redis.set_objects_and_state_by_id(image_id, objects=objects, state=state)
     return ImageContours(contours=[Contour(coords=x) for x in coords])
 
 

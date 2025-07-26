@@ -11,7 +11,7 @@ class HealthCheck(BaseModel):
 class RootInfo(BaseModel):
     """Root endpoint response model."""
 
-    message: str = "App developed for the MyoVision project 🚀"
+    message: str = "Rest API for MyoVision application"
 
 
 class Contour(BaseModel):
@@ -64,6 +64,16 @@ class Config(BaseModel):
             return cls.model_validate_json(value)
         return value
 
+    @property
+    def mu(self) -> float:
+        """Get the measure unit from the general config."""
+        return self.general_config.measure_unit
+
+    @property
+    def invert(self) -> bool:
+        """Get the invert image flag from the general config."""
+        return self.general_config.invert_image
+
 
 class State(BaseModel):
     """Validation state."""
@@ -75,12 +85,14 @@ class State(BaseModel):
     done: bool = Field(default=False)
     """Wtether the validation is done or not."""
 
-    def get_next(self) -> int:
-        """Get the next contour index."""
-        combined = self.valid | self.invalid
-        if len(combined) == 0:
-            return 0
-        return max(combined) + 1
+    @property
+    def combined(self) -> set[int]:
+        """Get combined set of valid and invalid contours."""
+        return self.valid | self.invalid
+
+    def next(self):
+        """Get the next index of a contour to validate."""
+        return max(self.combined) + 1 if self.combined else 0
 
     def shift_positive(self, shift: int) -> None:
         """Shift all indices to the right, assuming all indices are positive."""

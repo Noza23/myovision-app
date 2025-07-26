@@ -24,7 +24,7 @@ repos:
           - --add-ignore=D100,D104 # Ignore missing docstrings in modules
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v1.17.0
     hooks:
       - id: mypy
         args:
