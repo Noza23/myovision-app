@@ -15,7 +15,7 @@ from backend.settings import get_settings
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
-Value : TypeAlias = str | BaseModel
+Value: TypeAlias = str | BaseModel
 
 
 class MyoRedis(_Redis):
