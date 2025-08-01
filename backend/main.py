@@ -78,7 +78,7 @@ def get_config_chema() -> dict[str, str]:
     return Config.model_json_schema()["$defs"]
 
 
-async def _redis_connection_error_handler(request: Request, exc: Exception):
+def _redis_connection_error_handler(request: Request, exc: Exception):
     """Handle Redis connection errors."""
     logger.info(f"Redis Error occured when processing request for {request.url.path}")
     logger.error(exc, exc_info=True)
@@ -90,10 +90,6 @@ async def _redis_connection_error_handler(request: Request, exc: Exception):
     )
 
 
-app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
-app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
-
-
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle request validation errors."""
@@ -102,8 +98,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return await request_validation_exception_handler(request, exc)
 
 
+app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
+app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
+
+
 @app.exception_handler(UnrecognizedRoiType)
-async def unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
+def unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
     """Handle unrecognized ROI type errors."""
     logger.error(f"Unrecognized ROI type for request {request.url.path}")
     logger.debug(exc, exc_info=True)
