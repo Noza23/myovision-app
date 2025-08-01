@@ -33,8 +33,8 @@ async def upload_contours(
         logger.warning(f"Empty contours uploaded for image ID {image_id}.")
         return ImageContours(contours=[])
     objects.add_instances_from_coords(coords)
-    # NOTE: Append contours to the State. we assume all uploaded contours are valid.
-    state.shift_positive(len(coords))
+    # NOTE: Update the state: we assume all uploaded contours are valid.
+    state.add_valids(len(coords))
     await Redis.set_objects_and_state_by_id(image_id, objects=objects, state=state)
     return ImageContours(contours=[Contour(coords=x) for x in coords])
 

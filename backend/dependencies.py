@@ -1,10 +1,13 @@
 import logging
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, UploadFile, status
+from fastapi import Depends, HTTPException, UploadFile, WebSocket, status
 from myosam.inference.models.base import MyoObjects, Myotubes
 from myosam.inference.pipeline import Pipeline as _Pipeline
 
+from backend.agents import InferenceAgent as _InferenceAgent
+from backend.agents import ValidationAgent as _ValidationAgent
 from backend.models import Contour, ImageContours, State
 from backend.services import MyoSamManager, Redis
 
@@ -28,7 +31,6 @@ ObjectsByID = Annotated[MyoObjects, Depends(get_objects_by_id)]
 
 async def get_objects_or_none_by_id(image_id: str) -> MyoObjects | None:
     """Get MyoObjects from Redis by image ID or return None if not found."""
-    logger.info(f"[GET] Objects or None for image ID: {image_id}")
     return await Redis.get_myoobjects_by_id(image_id)
 
 
@@ -50,16 +52,14 @@ MyotubesByID = Annotated[Myotubes, Depends(get_myotubes_by_id)]
 
 async def get_myotubes_or_none_by_id(image_id: str) -> Myotubes | None:
     """Get Myotubes from Redis by image ID or return None if not found."""
-    logger.info(f"[GET] Myotubes or None for image ID: {image_id}")
     return await Redis.get_myoobjects_by_id(image_id)
 
 
 MyotubesOrNoneByID = Annotated[Myotubes | None, Depends(get_myotubes_or_none_by_id)]
 
 
-async def get_contours_by_id(image_id: str, objects: ObjectsByID) -> ImageContours:
+async def get_contours_by_id(objects: ObjectsByID) -> ImageContours:
     """Get contours from MyoObjects for the response model."""
-    logger.info(f"[GET] ImageContours for image ID: {image_id}")
     return ImageContours(contours=[Contour(coords=x.roi_coords) for x in objects])
 
 
@@ -95,3 +95,30 @@ IMAGE_FILE_EXTENSIONS = (".png", ".jpeg", ".tif", ".tiff")
 ImageFile = Annotated[
     bytes, Depends(lambda file: recieve_file(file, extensions=IMAGE_FILE_EXTENSIONS))
 ]
+
+
+async def get_validation_agent(
+    image_id: str, websocket: WebSocket, state: StateByID, contours: ContoursByID
+) -> AsyncGenerator[_ValidationAgent, None]:
+    """Get a ValidationAgent instance for the WebSocket connection."""
+    async with _ValidationAgent(
+        image_id=image_id,
+        websocket=websocket,
+        state=state,
+        contours=contours.contours,
+    ) as agent:
+        yield agent
+
+
+ValidationAgent = Annotated[_ValidationAgent, Depends(get_validation_agent)]
+
+
+async def get_inference_agent(
+    image_id: str, websocket: WebSocket
+) -> AsyncGenerator[_InferenceAgent, None]:
+    """Get an InferenceAgent instance for the WebSocket connection."""
+    async with _InferenceAgent(image_id, websocket) as agent:
+        yield agent
+
+
+InferenceAgent = Annotated[_InferenceAgent, Depends(get_inference_agent)]

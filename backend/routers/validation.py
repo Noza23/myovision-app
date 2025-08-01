@@ -1,148 +1,79 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
-    WebSocketException,
-)
-from myosam.inference.models.base import Myotubes
-from myosam.inference.pipeline import Pipeline
-from myosam.inference.predictors.utils import invert_image
-from redis import asyncio as aioredis  # type: ignore
+import logging
 
-from backend import STATIC_IMAGES_DIR, RedisKeys
-from backend.dependancies import get_pipeline_instance, setup_redis
-from backend.models import Config, State, ValidationResponse
-from backend.utils import get_fp
+from fastapi import APIRouter, HTTPException
+from myosam.inference.predictors.utils import invert_image
+from starlette.concurrency import run_in_threadpool
+
+from backend.agents import Actions
+from backend.dependencies import (
+    ImageFile,
+    MyotubesOrNoneByID,
+    Pipeline,
+    StateByID,
+    ValidationAgent,
+)
+from backend.models import Config, ValidationResponse
+from backend.services import MyoSam, Redis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+CONTOUR_COLOR = (0, 255, 0)  # Green color for contours
+CONTOUR_THICKNESS = 3  # Thickness of the contour lines
+
 
 @router.post("/", response_model=ValidationResponse)
-async def run_validation(
-    image: UploadFile,
+async def predict(
     config: Config,
-    redis: aioredis.Redis = Depends(setup_redis),
-    pipeline: Pipeline = Depends(get_pipeline_instance),
+    image: ImageFile,
+    myotubes: MyotubesOrNoneByID,
+    state: StateByID,
+    pipeline: Pipeline,
 ):
-    """Run the pipeline in validation mode."""
-    pipeline.set_myotube_image(await image.read(), image.filename)
-    img_hash = pipeline.myotube_hash()
+    """Run the pipeline and return the validation response."""
+    image_hash = str(hash(image))
+    pipeline.set_myotube_image(image=image)
+    validated_image = pipeline.myotube_image_np.copy()
+    if config.invert:  # NOTE: Invert the image if the config requires it
+        validated_image = invert_image(validated_image)
 
-    img_to_send = pipeline.myotube_image_np.copy()
-    if config.general_config.invert_image:
-        img_to_send = invert_image(img_to_send)
-
-    if await redis.exists(RedisKeys.result_key(img_hash)):
-        # Case when image is cached
-        myos = Myotubes.model_validate_json(
-            await redis.get(RedisKeys.result_key(img_hash))
+    if myotubes:  # NOTE: There is already a validation state for uploaded image
+        myotubes.adjust_measure_unit(measure_unit=config.mu)
+        validated_image = pipeline.draw_contours(
+            validated_image,
+            [myotubes[i].roi_coords_np for i in state.valid],
+            color=CONTOUR_COLOR,
+            thickness=CONTOUR_THICKNESS,
         )
-        if myos[0].measure_unit != config.general_config.measure_unit:
-            myos.adjust_measure_unit(config.general_config.measure_unit)
-            await redis.set(RedisKeys.result_key(img_hash), myos.model_dump_json())
-
-        state_json = await redis.get(RedisKeys.state_key(img_hash))
-        if state_json:
-            state = State.model_validate_json(state_json)
-        else:
-            state = State()
-            await redis.set(RedisKeys.state_key(img_hash), state.model_dump_json())
-        if state.valid:
-            img_to_send = pipeline.draw_contours(
-                img_to_send,
-                [myos[i].roi_coords_np for i in state.valid],
-                color=(0, 255, 0),
-            )
-    else:
-        # Case when image is not cached
-        state = State()
+    else:  # NOTE: There is no validation state, so we need to run the pipeline
         pipeline._myosam_predictor.update_amg_config(config.amg_config)
-        pipeline.set_measure_unit(config.general_config.measure_unit)
+        pipeline.set_measure_unit(config.mu)
         try:
-            myos = pipeline.execute().information_metrics.myotubes
+            myotubes = (
+                await run_in_threadpool(pipeline.execute)
+            ).information_metrics.myotubes
+            # NOTE: All new myotubes are recorded in the state with status "no decision"
+            state.add_no_decisions(len(myotubes))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"⚠️ Pipeline has failed: {e}")
-
-        await redis.mset(
-            {
-                RedisKeys.result_key(img_hash): myos.model_dump_json(),
-                RedisKeys.state_key(img_hash): state.model_dump_json(),
-            }
-        )
-    path = get_fp(STATIC_IMAGES_DIR)
-    pipeline.save_image(path, img_to_send)
-    return ValidationResponse(image_hash=img_hash, image_path=path)
-
-
-@router.websocket("/{hash_str}")
-async def validation_ws(
-    websocket: WebSocket,
-    hash_str: str,
-    redis: aioredis.Redis = Depends(setup_redis),
-) -> None:
-    """Websocket for validation mode."""
-
-    await websocket.accept()
-
-    mo = Myotubes.model_validate_json(await redis.get(RedisKeys.result_key(hash_str)))
-    state = State.model_validate_json(await redis.get(RedisKeys.state_key(hash_str)))
-    i = state.get_next()
-
-    if state.done:
-        await websocket.close()
-        return
-
-    await websocket.send_json(
-        {
-            "roi_coords": mo[i].roi_coords,
-            "contour_id": i + 1,
-            "total": len(mo),
-        }
-    )
-
-    while True:
-        if state.done:
-            break
-        try:
-            data = int(await websocket.receive_text())
-        except WebSocketDisconnect:
-            # print("Websocket disconnected.")
-            break
-
-        if data == 0:
-            state.invalid.add(i)
-        elif data == 1:
-            state.valid.add(i)
-        elif data == 2:
-            _ = mo.move_object_to_end(i)
-            await redis.set(RedisKeys.result_key(hash_str), mo.model_dump_json())
-        elif data == -1:
-            state.valid.discard(i)
-            state.invalid.discard(i)
-        else:
-            raise WebSocketException(1008, "⚠️ Invalid data received.")
-
-        await redis.set(RedisKeys.state_key(hash_str), state.model_dump_json())
-        step = data != 2 if data != -1 else -1
-        i = min(max(i + step, 0), len(mo) - 1)
-
-        if i + 1 == len(mo):
-            state.done = True
-            await redis.mset(
-                {
-                    RedisKeys.state_key(hash_str): state.model_dump_json(),
-                    RedisKeys.result_key(hash_str): mo.model_dump_json(),
-                }
+            logger.error(f"Pipeline failed for image {image_hash}: {e}")
+            logger.debug(e, exc_info=True)
+            raise HTTPException(
+                status_code=500, detail=f"Pipeline failed for image {image_hash}"
             )
 
-        # Send next contour
-        await websocket.send_json(
-            {
-                "roi_coords": mo[i].roi_coords,
-                "contour_id": i + 1,
-                "total": len(mo),
-            }
-        )
+    await Redis.set_objects_and_state_by_id(image_hash, objects=myotubes, state=state)
+    image_path = MyoSam.gen_unique_fp()
+    pipeline.save_image(path=image_path, img=validated_image)
+    return ValidationResponse(image_hash, image_path)
+
+
+@router.websocket("/ws/{hash_str}")
+async def validate(agent: ValidationAgent):
+    """Validate contours interactively using ValidationAgent."""
+    while not agent.done:
+        # NOTE: Send the next contour coordinates to the client for validation
+        await agent.send_contour()
+        # NOTE: wait for the client to send a decision for the contour sent
+        await agent.receive_decision()
+    agent.log_action(Actions.DONE)

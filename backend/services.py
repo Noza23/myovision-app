@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -14,8 +15,8 @@ from backend.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
-Value: TypeAlias = str | BaseModel
+T = TypeVar("T", BaseModel, State)
+Value: TypeAlias = str | BaseModel | State
 
 
 class MyoRedis(_Redis):
@@ -36,7 +37,22 @@ class MyoRedis(_Redis):
     @staticmethod
     def _serialize_value(value: Value) -> str:
         """Serialize Value type to a string representation for Redis storage."""
-        return value if isinstance(value, str) else value.model_dump_json()
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, BaseModel):
+            return value.model_dump_json()
+        elif isinstance(value, State):
+            return value.to_json()
+        return json.dumps(value)  # NOTE: Fallback
+
+    @staticmethod
+    def _deserialize_value(value: str, model: type[T]) -> T:
+        """Deserialize a string value to the specified model type."""
+        if issubclass(model, State):
+            return model.from_json(value)
+        elif issubclass(model, BaseModel):
+            return model.model_validate_json(value)
+        raise TypeError(f"Cannot deserialize value to {model.__name__}. ")
 
     async def get_by_key(self, key: str, model: type[T]) -> T | None:
         """Get value by key and deserialize it to the given model."""
@@ -44,7 +60,7 @@ class MyoRedis(_Redis):
         if not (value := await self.get(key)):
             logger.info(f"[NOT_FOUND] {model.__name__} for key: {key}")
             return None
-        return model.model_validate_json(value)
+        return self._deserialize_value(value, model)
 
     async def set_by_key(self, key: str, value: Value) -> bool | None:
         """Set value by key (serializing it if needed)."""
