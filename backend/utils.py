@@ -1,8 +1,10 @@
 from typing import Any
 
 
-def preprocess_ws_resp(data: dict[str, Any], exclude: list[str] = []) -> dict:
+def preprocess_ws_resp(data: dict[str, Any], exclude: list[str] | None) -> dict:
     """Preprocess data before sending through websocket."""
+    if not exclude:
+        exclude = []
     data_post: dict[str, Any] = {}
     for k, v in data.items():
         if k not in exclude:

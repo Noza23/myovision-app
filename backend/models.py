@@ -89,9 +89,7 @@ class State(OrderedDict[int, ValidationStatus]):
 
     ```
     ValidationStatus = Literal[-1, 0, 1]
-    {
-        id: ValidationStatus
-    }
+    {id: ValidationStatus}
     ```
     - `ValidationStatus`: -1: Invalid, 0: No decision, 1: Valid
     - `id`: list index for the contour in the image with matching `image_id`.
@@ -161,20 +159,17 @@ class State(OrderedDict[int, ValidationStatus]):
 
     def add_valids(self, n: int) -> None:
         """Add a number of valid contours at the beginning of the state."""
-        state = State(
-            {i: 1 for i in range(n)}
-        )  # NOTE: Create a new state with valid contours
-        state.update(
-            State({k + n: v for k, v in self.items()})
-        )  # NOTE: Shift all indices by n
-        # NOTE: Replace the current state with the new state
+        # NOTE: Create a new state with n valid contours
+        state = State(dict.fromkeys(range(n), 1))
+        # NOTE: Shift all indices by n
+        state.update(State({k + n: v for k, v in self.items()}))
         self.clear()
         self.update(state)
 
     def add_no_decisions(self, n: int) -> None:
         """Add a number of contours with no decision at the end of the state."""
         len_ = len(self)
-        self.update({i: 0 for i in range(len_, len_ + n)})
+        self.update(dict.fromkeys(range(len_, len_ + n), 0))
 
 
 class ValidationResponse(BaseModel):

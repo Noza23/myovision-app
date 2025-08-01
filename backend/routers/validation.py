@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 from myosam.inference.predictors.utils import invert_image
 from starlette.concurrency import run_in_threadpool
 
@@ -56,11 +56,12 @@ async def predict(
             # NOTE: All new myotubes are recorded in the state with status "no decision"
             state.add_no_decisions(len(myotubes))
         except Exception as e:
-            logger.error(f"Pipeline failed for image {image_hash}: {e}")
+            logger.error(f"Unexpected error during pipeline execution: {e}")
             logger.debug(e, exc_info=True)
             raise HTTPException(
-                status_code=500, detail=f"Pipeline failed for image {image_hash}"
-            )
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Pipeline failed for image {image_hash}",
+            ) from e
 
     await Redis.set_objects_and_state_by_id(image_hash, objects=myotubes, state=state)
     image_path = MyoSam.gen_unique_fp()

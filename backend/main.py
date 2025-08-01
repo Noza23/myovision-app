@@ -8,7 +8,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from redis.exceptions import ConnectionError, TimeoutError
+from read_roi._read_roi import UnrecognizedRoiType
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from backend.logger import setup_logging
 from backend.models import Config, HealthCheck, RootInfo
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    assert setup_logging(get_settings().log_level)
+    setup_logging(get_settings().log_level)
     MyoSam.setup()
 
     yield
@@ -88,8 +90,8 @@ async def _redis_connection_error_handler(request: Request, exc: Exception):
     )
 
 
-app.add_exception_handler(ConnectionError, _redis_connection_error_handler)
-app.add_exception_handler(TimeoutError, _redis_connection_error_handler)
+app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
+app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
 
 
 @app.exception_handler(RequestValidationError)
@@ -98,3 +100,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Validation error for request {request.url.path}")
     logger.debug(exc, exc_info=True)
     return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(UnrecognizedRoiType)
+async def unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
+    """Handle unrecognized ROI type errors."""
+    logger.error(f"Unrecognized ROI type for request {request.url.path}")
+    logger.debug(exc, exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "Unrecognized ROI type in the uploaded file."},
+    )

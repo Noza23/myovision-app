@@ -37,6 +37,7 @@ select = [
     "BLE", #flake8-blind-except
 ]
 fixable = ["I"]
+ignore = ["D100", "D104"]
 pydocstyle = { convention = "google" }
 
 [tool.ruff.lint.per-file-ignores]

@@ -49,7 +49,5 @@ async def load_coords_from_zip(file: bytes) -> list[list[list[int]]]:
         except Exception as e:
             logger.error(f"Failed to read ROIs from file: {e}")
             logger.debug(e, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed ROI file."
-            )
+            raise e
     return [[[x, y] for x, y in zip(roi["x"], roi["y"])] for _, roi in rois.items()]

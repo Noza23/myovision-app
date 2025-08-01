@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 # from typing import Any, Union
 
 # from fastapi import (
@@ -20,7 +22,8 @@
 # from backend.models import Config, InferenceResponse, Point
 # from backend.utils import get_fp, preprocess_ws_resp
 
-# router = APIRouter()
+
+router = APIRouter()
 
 
 # @router.post("/", response_model=InferenceResponse)

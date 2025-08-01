@@ -43,7 +43,6 @@ class WebSocketAgent:
     """Base class for WebSocket agents."""
 
     LOG_TEMPLATE = "[{name}] [{identifier}] [{action}]: {message}"
-    LOG_TEMPLATE_NO_MSG = LOG_TEMPLATE.rstrip(": {message}")
 
     def __init__(self, image_id: str, websocket: WebSocket):
         """Initialize the WebSocket agent."""
@@ -55,8 +54,7 @@ class WebSocketAgent:
 
     def log_action(self, action: Actions, message: Any = ""):
         """Log the action performed by the agent in a structured format."""
-        template = self.LOG_TEMPLATE if message else self.LOG_TEMPLATE_NO_MSG
-        log = template.format(
+        log = self.LOG_TEMPLATE.format(
             name=self.name,
             identifier=self.identifier,
             action=action.value,
@@ -85,6 +83,7 @@ class WebSocketAgent:
         if exc_value is None:
             code = status.WS_1000_NORMAL_CLOSURE
         elif isinstance(exc_value, (WebSocketException, WebSocketDisconnect)):
+            logger.debug(exc_value, exc_info=True)
             code = exc_value.code
         else:
             self.log_action(Actions.UNEXPECTED_ERROR, exc_value)
@@ -167,17 +166,11 @@ class ValidationAgent(WebSocketAgent):
         try:
             data = self.get_data_to_send()
             await self.websocket.send_json(data=data, mode="text")
-        except (WebSocketException, WebSocketDisconnect) as e:
-            raise e
         except Exception as e:
             self.log_action(
                 Actions.UNEXPECTED_ERROR, f"Sending coordinates has failed: {e}"
             )
-            logger.debug(e, exc_info=True)
-            raise WebSocketException(
-                code=status.WS_1011_INTERNAL_ERROR,
-                detail="Unexpected error occurred while sending coordinates.",
-            ) from None
+            raise e
         # NOTE: Update the current id after successfully sending the data
         self._current_id = self.state.next()
 
@@ -186,17 +179,11 @@ class ValidationAgent(WebSocketAgent):
         self.log_action(Actions.WAITING, message=self.current_id)
         try:
             text = await self.websocket.receive_text()
-        except (WebSocketException, WebSocketDisconnect) as e:
-            raise e
         except Exception as e:
             self.log_action(
                 Actions.UNEXPECTED_ERROR, f"Receiving signal has failed: {e}"
             )
-            logger.debug(e, exc_info=True)
-            raise WebSocketException(
-                code=status.WS_1011_INTERNAL_ERROR,
-                detail="Unexpected error occurred while receiving signal.",
-            ) from None
+            raise e
 
         # NOTE: Expecting a single digit signal
         if len(text) != 1 or not (
