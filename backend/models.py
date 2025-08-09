@@ -3,7 +3,7 @@ from collections import OrderedDict
 from typing import Literal, NamedTuple, Self
 
 from myosam.inference.predictors.config import AmgConfig
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import TypeAlias
 
 
@@ -36,30 +36,25 @@ class ImageContours(BaseModel):
 class GeneralConfig(BaseModel):
     """General configuration for the pipeline."""
 
-    measure_unit: float = Field(
-        default=1.0,
-        ge=0.0,
-        description="The measure unit for the uploaded image.",
-    )
-    invert_image: bool = Field(
-        default=False,
-        description="Whether to invert the image (for visualization only).",
-    )
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+    measure_unit: float = Field(default=1.0, ge=0.0)
+    """Measure unit for the uploaded image."""
+    invert_image: bool = False
+    """Whether to invert the image (for visualization only)."""
 
 
 class Config(BaseModel):
     """Configuration for the pipeline."""
 
-    amg_config: AmgConfig = Field(
-        default_factory=AmgConfig,
-        description="Config for AMG (Auto Mask Generation) algorithm.",
-        title="AMG Config",
-    )
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+    amg_config: AmgConfig = Field(default_factory=AmgConfig, title="AMG Config")
+    """Config for AMG (Auto Mask Generation algorithm)."""
     general_config: GeneralConfig = Field(
-        default_factory=GeneralConfig,
-        description="General configuration for the pipeline.",
-        title="General Config",
+        default_factory=GeneralConfig, title="General Config"
     )
+    """Config for general pipeline settings."""
 
     @model_validator(mode="before")
     @classmethod
@@ -195,7 +190,7 @@ class InferenceResponse(BaseModel):
 
 
 class Point(NamedTuple):
-    """A point on the 2D image."""
+    """A point in the 2D space."""
 
     x: int
     y: int
