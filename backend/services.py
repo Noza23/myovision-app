@@ -10,7 +10,7 @@ from myosam.inference.pipeline import Pipeline
 from pydantic import BaseModel
 from redis.asyncio.client import Redis as _Redis
 
-from backend.models import State
+from backend.models import Config, State
 from backend.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,8 @@ class MyoRedis(_Redis):
             return model.from_json(value)
         elif issubclass(model, BaseModel):
             return model.model_validate_json(value)
-        raise TypeError(f"Cannot deserialize value to {model.__name__}. ")
+        msg = f"Cannot deserialize value to {model.__name__}. "
+        raise TypeError(msg)
 
     async def get_by_key(self, key: str, model: type[T]) -> T | None:
         """Get value by key and deserialize it to the given model."""
@@ -81,6 +82,21 @@ class MyoRedis(_Redis):
             }
         )
 
+    async def mget_by_key(self, mapping: dict[str, type[T]]) -> dict[str, T | None]:
+        """Get multiple values by keys and deserialize them to the given model."""
+        logger.info(
+            f"[MGET] {', '.join(f'{v.__name__} for key: {k}' for k, v in mapping.items())}"
+        )
+        result = dict.fromkeys(mapping.keys(), None)
+        # NOTE: MGET returns the values in same order as keys provided
+        objects_raw: list[str | None] = await self.mget(mapping.keys())
+        for id_, obj_raw in zip(mapping.keys(), objects_raw, strict=True):
+            if obj_raw is not None:
+                result[id_] = self._deserialize_value(obj_raw, mapping[id_])
+            else:
+                logger.info(f"[NOT_FOUND] {mapping[id_].__name__} for key: {id_}")
+        return result
+
     async def get_state_by_id(self, image_id: str) -> State | None:
         """Get validation state by image ID."""
         return await self.get_by_key(self.state_key(image_id), model=State)
@@ -89,7 +105,7 @@ class MyoRedis(_Redis):
         """Get General MyoObjects by image ID (useful when we only need contours)."""
         return await self.get_by_key(self.objects_key(image_id), model=MyoObjects)
 
-    async def get_myotoubes_by_id(self, image_id: str) -> Myotubes | None:
+    async def get_myotubes_by_id(self, image_id: str) -> Myotubes | None:
         """Get Myotubes by image ID."""
         return await self.get_by_key(self.objects_key(image_id), model=Myotubes)
 
@@ -113,6 +129,16 @@ class MyoRedis(_Redis):
             {self.objects_key(image_id): objects, self.state_key(image_id): state}
         )
 
+    async def get_myotubes_and_nucleis_by_id(
+        self, myotubes_id: str, nucleis_id: str
+    ) -> tuple[Myotubes | None, Nucleis | None]:
+        """Get Myotubes and Nucleis by their IDs."""
+        myotubes_key = self.objects_key(myotubes_id)
+        nucleis_key = self.objects_key(nucleis_id)
+        mapping = {myotubes_key: Myotubes, nucleis_key: Nucleis}
+        result = await self.mget_by_key(mapping)
+        return (result[myotubes_key], result[nucleis_key])
+
 
 class MyoSamManager:
     """Wrapper for MyoSam inference pipeline for convenient access and pipeline management."""
@@ -127,7 +153,8 @@ class MyoSamManager:
         self.cache_dir = cache_dir
         self.cache_path = Path(self.cache_dir)
         if not self.cache_path.exists():
-            raise FileNotFoundError(f"Cache directory {self.cache_dir} does not exist.")
+            msg = f"Cache directory {self.cache_dir} does not exist."
+            raise FileNotFoundError(msg)
         self.pipeline = Pipeline()
         self._isetup = False
 
@@ -154,7 +181,7 @@ class MyoSamManager:
         self._cleanup_cache()
         self._isetup = False
 
-    def gen_unique_fp(self, suffix: str = ".png") -> str:
+    def generate_fp(self, suffix: str = ".png") -> str:
         """Generate a unique file path in the cache directory."""
         return os.path.join(self.cache_dir, f"{uuid4().hex}{suffix}")
 
@@ -166,14 +193,18 @@ class MyoSamManager:
                 logger.info(f"Removing file: {f}")
                 f.unlink()
 
-    def get_pipeline(self) -> Pipeline:
+    def get_pipeline(self, config: Config) -> Pipeline:
         """Get the configured pipeline."""
         if not self._isetup:
-            raise RuntimeError("Pipeline is not set up. Call setup() first.")
+            msg = "Pipeline is not set up. Call setup() method first."
+            raise RuntimeError(msg)
         # Return a copy of the pipeline to avoice collisions for multiple users
         # model_copy does not copy the model weights, as this is not a deep copy
         # and only copies the configuration.
-        return self.pipeline.model_copy()
+        pipeline = self.pipeline.model_copy()
+        pipeline._myosam_predictor.update_amg_config(config.amg_config)
+        pipeline.set_measure_unit(mu=config.mu)
+        return pipeline
 
 
 Redis = MyoRedis(

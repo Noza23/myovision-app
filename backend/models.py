@@ -2,6 +2,7 @@ import json
 from collections import OrderedDict
 from typing import Literal, NamedTuple, Self
 
+from myosam.inference.models.base import Myotubes, NucleiClusters, Nucleis
 from myosam.inference.predictors.config import AmgConfig
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import TypeAlias
@@ -174,6 +175,14 @@ class ValidationResponse(BaseModel):
     """Image Hash, that is treated as a unique identifier across the application."""
     image_path: str
     """Image path in the static cache directory."""
+
+
+class InferenceDataResponse(BaseModel):
+    """Response model for fetching inference data."""
+
+    myotubes: Myotubes
+    nucleis: Nucleis
+    nuclei_clusters: NucleiClusters
 
 
 class InferenceResponse(BaseModel):

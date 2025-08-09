@@ -7,14 +7,15 @@ from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import WebSocketException
+from myosam.inference.models.base import Myotubes, NucleiClusters, Nucleis
 
-from backend.models import Contour, State
+from backend.models import Contour, Point, State
 from backend.services import Redis
 
 logger = logging.getLogger(__name__)
 
 
-class Actions(StrEnum):
+class Action(StrEnum):
     """Enum for WebSocket actions."""
 
     INIT = "INIT"
@@ -44,15 +45,14 @@ class WebSocketAgent:
 
     LOG_TEMPLATE = "[{name}] [{identifier}] [{action}]: {message}"
 
-    def __init__(self, image_id: str, websocket: WebSocket):
+    def __init__(self, websocket: WebSocket):
         """Initialize the WebSocket agent."""
         self.identifier = uuid4()
-        self.image_id = image_id
         self.websocket = websocket
         self.name = self.__class__.__name__
-        self.log_action(Actions.INIT, message=self.image_id)
+        self.log_action(Action.INIT)
 
-    def log_action(self, action: Actions, message: Any = ""):
+    def log_action(self, action: Action, message: Any = ""):
         """Log the action performed by the agent in a structured format."""
         log = self.LOG_TEMPLATE.format(
             name=self.name,
@@ -61,16 +61,16 @@ class WebSocketAgent:
             message=message,
         )
         match action:
-            case Actions.UNEXPECTED_ERROR:
+            case Action.UNEXPECTED_ERROR:
                 logger.error(log)
             case _:
                 logger.info(log)
 
     async def __aenter__(self):
         """Enter the context manager, connecting to the WebSocket."""
-        self.log_action(Actions.CONNECTING)
+        self.log_action(Action.CONNECTING)
         await self.websocket.accept()
-        self.log_action(Actions.CONNECTED)
+        self.log_action(Action.CONNECTED)
         return self
 
     async def __aexit__(
@@ -86,15 +86,15 @@ class WebSocketAgent:
             logger.debug(exc_value, exc_info=True)
             code = exc_value.code
         else:
-            self.log_action(Actions.UNEXPECTED_ERROR, exc_value)
-            logger.debug(exc_value, exc_info=True)
+            self.log_action(Action.UNEXPECTED_ERROR, exc_value)
+            logger.error(exc_value, exc_info=True)
             code = status.WS_1011_INTERNAL_ERROR
 
-        self.log_action(Actions.DISCONNECTING, message=f"{code} - {exc_value}")
+        self.log_action(Action.DISCONNECTING, message=f"{code} - {exc_value}")
         # NOTE: In case of WebSocketDisconnect, starlette will handle closing the connection.
         if exc_type is not WebSocketDisconnect:
             await self.websocket.close(code=code)
-        self.log_action(Actions.DISCONNECTED)
+        self.log_action(Action.DISCONNECTED)
 
 
 class ValidationSignal(IntEnum):
@@ -125,10 +125,11 @@ class ValidationAgent(WebSocketAgent):
     """Agent for handling validation WebSocket connections."""
 
     def __init__(
-        self, image_id: str, websocket: WebSocket, state: State, contours: list[Contour]
+        self, websocket: WebSocket, image_id: str, state: State, contours: list[Contour]
     ):
         """Initialize the ValidationAgent."""
-        super().__init__(image_id=image_id, websocket=websocket)
+        super().__init__(websocket=websocket)
+        self.image_id = image_id
         self.state = state
         self.contours = contours
         self._current_id = state.next()
@@ -143,32 +144,31 @@ class ValidationAgent(WebSocketAgent):
         """Get the current id of the contour being validated."""
         if self._current_id is None:
             self.log_action(
-                Actions.UNEXPECTED_ERROR,
+                Action.UNEXPECTED_ERROR,
                 "Websocket should have been closed after sending the last contour.",
             )
-            raise WebSocketDisconnect(
-                code=status.WS_1000_NORMAL_CLOSURE, reason="Validation completed."
-            )
+            msg = "Validation completed."
+            raise WebSocketDisconnect(code=status.WS_1000_NORMAL_CLOSURE, reason=msg)
         return self._current_id
 
     def get_data_to_send(self):
         """Get the next contour coordinates to send to the client."""
         return {
-            "coords": self.contours[self.current_id].coords,
             "id": self.current_id,
+            "coords": self.contours[self.current_id].coords,
             "total": len(self.state),
             "session": self.identifier,
         }
 
     async def send_contour(self):
         """Send the next contour coordinates to the client to validate."""
-        self.log_action(Actions.SENDING, message=self.current_id)
+        self.log_action(Action.SENDING, message=self.current_id)
         try:
             data = self.get_data_to_send()
             await self.websocket.send_json(data=data, mode="text")
         except Exception as e:
             self.log_action(
-                Actions.UNEXPECTED_ERROR, f"Sending coordinates has failed: {e}"
+                Action.UNEXPECTED_ERROR, message=f"Sending coordinates has failed: {e}"
             )
             raise e
         # NOTE: Update the current id after successfully sending the data
@@ -176,27 +176,25 @@ class ValidationAgent(WebSocketAgent):
 
     async def receive_decision(self):
         """Receive the client's signal on the contour sent."""
-        self.log_action(Actions.WAITING, message=self.current_id)
+        self.log_action(Action.WAITING, message=self.current_id)
         try:
-            text = await self.websocket.receive_text()
+            digit = await self.websocket.receive_json()
         except Exception as e:
             self.log_action(
-                Actions.UNEXPECTED_ERROR, f"Receiving signal has failed: {e}"
+                Action.UNEXPECTED_ERROR, message=f"Receiving signal has failed: {e}"
             )
             raise e
 
         # NOTE: Expecting a single digit signal
-        if len(text) != 1 or not (
-            text.isdigit() and ValidationSignal.is_signal(int(text))
-        ):
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Received invalid signal from client. Expected one of "
-                f"{ValidationSignal.to_list()} but got: {text}",
+        if not isinstance(digit, int) or not ValidationSignal.is_signal(digit):
+            msg = (
+                "Received invalid signal from client. Expected one of "
+                f"{ValidationSignal.to_list()} but got: {digit}"
             )
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason=msg)
 
-        signal = ValidationSignal(int(text))
-        self.log_action(Actions.ACTING, message=signal.name)
+        signal = ValidationSignal(digit)
+        self.log_action(Action.ACTING, message=signal.name)
         await self.act_on_decision(signal)
 
     async def act_on_decision(self, signal: ValidationSignal):
@@ -211,15 +209,86 @@ class ValidationAgent(WebSocketAgent):
             case ValidationSignal.SKIP:
                 self.state.skip(self.current_id)
             case _:
-                raise RuntimeError(f"Unexpected signal received: {signal}.")
+                msg = f"Unexpected signal received: {signal}."
+                raise RuntimeError(msg)
 
-        # NOTE: Persist the state after each recieved ValidationSignal
+        # NOTE: Persist the state after each received ValidationSignal
         if not await Redis.set_state_by_id(self.image_id, self.state):
             self.log_action(
-                Actions.UNEXPECTED_ERROR,
+                Action.UNEXPECTED_ERROR,
                 f"Failed to persist state for image ID: {self.image_id}",
             )
 
 
 class InferenceAgent(WebSocketAgent):
     """Agent for handling inference WebSocket connections."""
+
+    def __init__(
+        self,
+        websocket: WebSocket,
+        myotubes: Myotubes,
+        nucleis: Nucleis,
+        clusters: NucleiClusters,
+    ):
+        """Initialize the InferenceAgent."""
+        super().__init__(websocket=websocket)
+        self.myotubes = myotubes
+        self.nucleis = nucleis
+        if not any((len(myotubes), len(nucleis))):
+            msg = "No Myotubes or Nucleis found, Agent cannot do inference."
+            raise WebSocketDisconnect(code=status.WS_1000_NORMAL_CLOSURE, reason=msg)
+        self.clusters = clusters
+
+    async def receive_point(self):
+        """Receive a point from the client and return the inference data for it."""
+        try:
+            self.log_action(Action.WAITING)
+            data = await self.websocket.receive_json()
+        except Exception as e:
+            self.log_action(
+                Action.UNEXPECTED_ERROR, message=f"Receiving Point has failed: {e}"
+            )
+            raise e
+        try:
+            point = Point(**data)
+        except TypeError as e:
+            msg = f"Invalid data for Point: {data}. Expected: {{'x': int, 'y': int}}"
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION, reason=msg
+            ) from e
+        return point
+
+    def get_data_to_send(self, point: Point):
+        """Get the data to send for a specific point."""
+        if not (myotube := self.myotubes.get_instance_by_point(point)):
+            return {"myotube": None, "clusters": None}
+
+        clusters = self.clusters.get_clusters_by_myotube_id(myotube.identifier)
+        myotube = myotube.model_dump(exclude=["roi_coords", "nuclei_ids"])
+        data = {
+            "myotube": myotube,
+            "clusters": [cluster.model_dump() for cluster in clusters],
+        }
+
+        # NOTE: Rounding floating values, ugly but lets come back later
+        for k, v in myotube.items():
+            if isinstance(k, float):
+                v = round(v, 2)
+            elif isinstance(v, (tuple, list)):
+                v = [round(x, 2) if isinstance(x, float) else x for x in v]
+            data["myotube"][k] = v
+
+        return data
+
+    async def send_data(self, point: Point):
+        """Send inference data for a specific point."""
+        data = self.get_data_to_send(point)
+        self.log_action(Action.SENDING, message=point)
+        try:
+            await self.websocket.send_json(data=data, mode="text")
+        except Exception as e:
+            self.log_action(
+                Action.UNEXPECTED_ERROR, message=f"Sending data has failed: {e}"
+            )
+            raise e
+        self.log_action(Action.ACTING, message=f"Sent data for point: {point}")

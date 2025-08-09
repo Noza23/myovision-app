@@ -13,7 +13,8 @@ def setup_logging(level: str = "INFO") -> bool:
 
     path = Path(__file__).parent / "logging.yaml"
     if not path.exists():
-        raise FileNotFoundError(f"logging.yaml not found: {path}")
+        msg = f"logging.yaml not found: {path}"
+        raise FileNotFoundError(msg)
 
     config = yaml.safe_load(path.read_text())
     for _config in config["handlers"].values():

@@ -16,7 +16,9 @@ class RedisSettings(BaseSettings):
 class Settings(BaseSettings):
     """Configuraion for the MyoVision Rest API."""
 
-    model_config = SettingsConfigDict(env_nested_delimiter="__", env_file=".env")
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__", env_file=".env", extra="allow"
+    )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     """Logging level for the application."""

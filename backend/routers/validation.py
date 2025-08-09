@@ -4,13 +4,13 @@ from fastapi import APIRouter, HTTPException, status
 from myosam.inference.predictors.utils import invert_image
 from starlette.concurrency import run_in_threadpool
 
-from backend.agents import Actions
+from backend.agents import Action
 from backend.dependencies import (
     ImageFile,
-    MyotubesOrNoneByID,
     Pipeline,
-    StateByID,
     ValidationAgent,
+    get_myotubes_or_none_by_id,
+    get_validation_state_by_id,
 )
 from backend.models import Config, ValidationResponse
 from backend.services import MyoSam, Redis
@@ -24,19 +24,16 @@ CONTOUR_THICKNESS = 3  # Thickness of the contour lines
 
 
 @router.post("/", response_model=ValidationResponse)
-async def predict(
-    config: Config,
-    image: ImageFile,
-    myotubes: MyotubesOrNoneByID,
-    state: StateByID,
-    pipeline: Pipeline,
-):
+async def predict(config: Config, image: ImageFile, pipeline: Pipeline):
     """Run the pipeline and return the validation response."""
-    image_hash = str(hash(image))
-    pipeline.set_myotube_image(image=image)
+    image_id = str(hash(image))
+    pipeline.set_myotube_image(image=image, name=image_id)
     validated_image = pipeline.myotube_image_np.copy()
     if config.invert:  # NOTE: Invert the image if the config requires it
         validated_image = invert_image(validated_image)
+
+    myotubes = await get_myotubes_or_none_by_id(image_id)
+    state = await get_validation_state_by_id(image_id)
 
     if myotubes:  # NOTE: There is already a validation state for uploaded image
         myotubes.adjust_measure_unit(measure_unit=config.mu)
@@ -47,8 +44,6 @@ async def predict(
             thickness=CONTOUR_THICKNESS,
         )
     else:  # NOTE: There is no validation state, so we need to run the pipeline
-        pipeline._myosam_predictor.update_amg_config(config.amg_config)
-        pipeline.set_measure_unit(config.mu)
         try:
             myotubes = (
                 await run_in_threadpool(pipeline.execute)
@@ -58,18 +53,19 @@ async def predict(
         except Exception as e:
             logger.error(f"Unexpected error during pipeline execution: {e}")
             logger.debug(e, exc_info=True)
+            msg = f"Pipeline failed for image {image_id}"
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Pipeline failed for image {image_hash}",
+                detail=msg,
             ) from e
 
-    await Redis.set_objects_and_state_by_id(image_hash, objects=myotubes, state=state)
-    image_path = MyoSam.gen_unique_fp()
+    await Redis.set_objects_and_state_by_id(image_id, objects=myotubes, state=state)
+    image_path = MyoSam.generate_fp()
     pipeline.save_image(path=image_path, img=validated_image)
-    return ValidationResponse(image_hash, image_path)
+    return ValidationResponse(image_id, image_path)
 
 
-@router.websocket("/ws/{hash_str}")
+@router.websocket("/ws/{image_id}")
 async def validate(agent: ValidationAgent):
     """Validate contours interactively using ValidationAgent."""
     while not agent.done:
@@ -77,4 +73,4 @@ async def validate(agent: ValidationAgent):
         await agent.send_contour()
         # NOTE: wait for the client to send a decision for the contour sent
         await agent.receive_decision()
-    agent.log_action(Actions.DONE)
+    agent.log_action(Action.DONE)
