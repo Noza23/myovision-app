@@ -1,6 +1,9 @@
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +38,13 @@ class Settings(BaseSettings):
     """Device to use for computation (e.g., 'cpu', 'cuda')."""
     cache_dir: str = "static/images"
     """Directory for caching images."""
+
+    @field_validator("cache_dir")
+    def validate_cache_dir(cls, v):
+        """Ensure cache directory exists."""
+        if not Path(v).exists():
+            os.makedirs(v, exist_ok=True)
+        return v
 
 
 @lru_cache(maxsize=1)
