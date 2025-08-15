@@ -1,7 +1,7 @@
 [tool.poetry]
 package-mode = false
 name = "myovision-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "A RESTful API for myovision project"
 authors = ["Noza23 <g.nozadze2311@gmail.com>"]
 license = "MIT"
