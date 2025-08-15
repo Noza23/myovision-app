@@ -11,7 +11,7 @@ from backend.dependencies import (
     get_myotubes_or_none_by_id,
     get_nucleis_or_none_by_id,
 )
-from backend.models import Config, InferenceDataResponse, InferenceResponse
+from backend.models import InferenceDataResponse, InferenceResponse
 from backend.services import MyoSam, Redis
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=InferenceResponse)
-async def predict(
-    config: Config, myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline
-):
+async def predict(myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline):
     """Run the pipeline and return the inference Response."""
     myotube_id, nuclei_id = str(hash(myotube)), str(hash(nuclei))
 
