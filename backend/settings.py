@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     """Configuraion for the MyoVision Rest API."""
 
     model_config = SettingsConfigDict(
-        env_nested_delimiter="__", env_file=".env", extra="allow"
+        env_nested_delimiter="__",
+        env_file=".env",
+        extra="allow",
+        env_prefix="MYOVISION_",
     )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
@@ -28,7 +31,7 @@ class Settings(BaseSettings):
     """Path to the MyoSam model."""
     stardist_model: str
     """Path to the StarDist model."""
-    device: str
+    device: str = "cpu"
     """Device to use for computation (e.g., 'cpu', 'cuda')."""
     cache_dir: str = "static/images"
     """Directory for caching images."""

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 from fastapi import APIRouter, HTTPException, status
@@ -26,7 +27,7 @@ CONTOUR_THICKNESS = 3  # Thickness of the contour lines
 @router.post("/", response_model=ValidationResponse)
 async def predict(config: Config, image: ImageFile, pipeline: Pipeline):
     """Run the pipeline and return the validation response."""
-    image_id = str(hash(image))
+    image_id = hashlib.blake2b(image, digest_size=8).digest().hex()
     pipeline.set_myotube_image(image=image, name=image_id)
     validated_image = pipeline.myotube_image_np.copy()
     if config.invert:  # NOTE: Invert the image if the config requires it
@@ -43,6 +44,8 @@ async def predict(config: Config, image: ImageFile, pipeline: Pipeline):
             color=CONTOUR_COLOR,
             thickness=CONTOUR_THICKNESS,
         )
+        if not state:  # NOTE: Validation state was cleared
+            state.add_no_decisions(len(myotubes))
     else:  # NOTE: There is no validation state, so we need to run the pipeline
         try:
             myotubes = (
@@ -62,7 +65,7 @@ async def predict(config: Config, image: ImageFile, pipeline: Pipeline):
     await Redis.set_objects_and_state_by_id(image_id, objects=myotubes, state=state)
     image_path = MyoSam.generate_fp()
     pipeline.save_image(path=image_path, img=validated_image)
-    return ValidationResponse(image_id, image_path)
+    return ValidationResponse(image_hash=image_id, image_path=image_path)
 
 
 @router.websocket("/ws/{image_id}")

@@ -11,7 +11,7 @@ def setup_logging(level: str = "INFO") -> bool:
     """Setup logging configuration."""
     global _logger_setup
 
-    path = Path(__file__).parent / "logging.yaml"
+    path = Path(__file__).parent.parent / "logging.yaml"
     if not path.exists():
         msg = f"logging.yaml not found: {path}"
         raise FileNotFoundError(msg)

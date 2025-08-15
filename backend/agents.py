@@ -155,7 +155,7 @@ class ValidationAgent(WebSocketAgent):
             "id": self.current_id,
             "coords": self.contours[self.current_id].coords,
             "total": len(self.state),
-            "session": self.identifier,
+            "session": str(self.identifier),
         }
 
     async def send_contour(self):
@@ -270,7 +270,7 @@ class InferenceAgent(WebSocketAgent):
 
         # NOTE: Rounding floating values, ugly but lets come back later
         for k, v in myotube.items():
-            if isinstance(k, float):
+            if isinstance(v, float):
                 v = round(v, 2)
             elif isinstance(v, (tuple, list)):
                 v = [round(x, 2) if isinstance(x, float) else x for x in v]

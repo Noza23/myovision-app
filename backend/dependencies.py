@@ -8,12 +8,12 @@ from myosam.inference.pipeline import Pipeline as _Pipeline
 
 from backend.agents import InferenceAgent as _InferenceAgent
 from backend.agents import ValidationAgent as _ValidationAgent
-from backend.models import Contour, ImageContours, State
-from backend.services import MyoSamManager, Redis
+from backend.models import Contour, FileType, ImageContours, State
+from backend.services import MyoSam, Redis
 
 logger = logging.getLogger(__name__)
 
-Pipeline = Annotated[_Pipeline, Depends(MyoSamManager.get_pipeline)]
+Pipeline = Annotated[_Pipeline, Depends(MyoSam.get_pipeline)]
 
 
 async def get_objects_by_id(image_id: str) -> MyoObjects:
@@ -104,25 +104,49 @@ async def get_validation_state_by_id(image_id: str) -> State:
 StateByID = Annotated[State, Depends(get_validation_state_by_id)]
 
 
-async def recieve_file(file: UploadFile, extensions: tuple[str]) -> bytes:
+def receive_file(file_type: FileType):
     """Receive a file and validate its extension."""
-    logger.info("Received file %s", file.filename)
-    if not file.filename.lower().endswith(extensions):
-        msg = f"Invalid file extension. Allowed extensions: {', '.join(extensions)}"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
-    return await file.read()
+
+    async def _receive_file(file: UploadFile) -> bytes:
+        logger.info("Received file %s", file.filename)
+        if not file.filename.lower().endswith(file_type.extensions):
+            msg = f"Invalid file extension. Allowed extensions: {', '.join(file_type.extensions)}"
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+        return await file.read()
+
+    match file_type:
+        case FileType.ROI:
+
+            async def receive_file(roi: UploadFile) -> bytes:  # type: ignore
+                return await _receive_file(roi)
+
+        case FileType.MYOTUBE:
+
+            async def receive_file(myotube: UploadFile) -> bytes:  # type: ignore
+                return await _receive_file(myotube)
+
+        case FileType.NUCLEI:
+
+            async def receive_file(nuclei: UploadFile) -> bytes:  # type: ignore
+                return await _receive_file(nuclei)
+
+        case FileType.IMAGE:
+
+            async def receive_file(image: UploadFile) -> bytes:  # type: ignore
+                return await _receive_file(image)
+
+        case _:
+
+            async def receive_file(file: UploadFile) -> bytes:  # type: ignore
+                return await _receive_file(file)
+
+    return receive_file
 
 
-ZIP_FILE_EXTENSIONS = (".zip",)
-ROIZip = Annotated[
-    bytes, Depends(lambda file: recieve_file(file, extensions=ZIP_FILE_EXTENSIONS))
-]
-
-
-IMAGE_FILE_EXTENSIONS = (".png", ".jpeg", ".tif", ".tiff")
-ImageFile = Annotated[
-    bytes, Depends(lambda file: recieve_file(file, extensions=IMAGE_FILE_EXTENSIONS))
-]
+MyotubeFile = Annotated[bytes, Depends(receive_file(FileType.MYOTUBE))]
+NucleiFile = Annotated[bytes, Depends(receive_file(FileType.NUCLEI))]
+ImageFile = Annotated[bytes, Depends(receive_file(FileType.IMAGE))]
+ROIZip = Annotated[bytes, Depends(receive_file(FileType.ROI))]
 
 
 async def get_validation_agent(

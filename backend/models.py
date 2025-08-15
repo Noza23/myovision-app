@@ -1,5 +1,6 @@
 import json
 from collections import OrderedDict
+from enum import StrEnum
 from typing import Literal, NamedTuple, Self
 
 from myosam.inference.models.base import Myotubes, NucleiClusters, Nucleis
@@ -166,6 +167,27 @@ class State(OrderedDict[int, ValidationStatus]):
         """Add a number of contours with no decision at the end of the state."""
         len_ = len(self)
         self.update(dict.fromkeys(range(len_, len_ + n), 0))
+
+
+class FileType(StrEnum):
+    """File types for the upload files."""
+
+    ROI = "ROI"
+    MYOTUBE = "MYOTUBE"
+    NUCLEI = "NUCLEI"
+    IMAGE = "IMAGE"
+
+    __EXTENSIONS__ = {
+        ROI: (".zip",),
+        MYOTUBE: (".png", ".jpeg", ".tif", ".tiff"),
+        NUCLEI: (".png", ".jpeg", ".tif", ".tiff"),
+        IMAGE: (".png", ".jpeg", ".tif", ".tiff"),
+    }
+
+    @property
+    def extensions(self):
+        """Get the allowed file extensions for the image type."""
+        return self.__EXTENSIONS__[self]
 
 
 class ValidationResponse(BaseModel):

@@ -1,12 +1,14 @@
+import hashlib
 import logging
 
 from fastapi import APIRouter, HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from backend.dependencies import (
-    ImageFile,
     InferenceAgent,
+    MyotubeFile,
     MyotubesAndNucleisByID,
+    NucleiFile,
     Pipeline,
     get_myotubes_or_none_by_id,
     get_nucleis_or_none_by_id,
@@ -20,9 +22,10 @@ router = APIRouter()
 
 
 @router.post("/", response_model=InferenceResponse)
-async def predict(myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline):
+async def predict(myotube: MyotubeFile, nuclei: NucleiFile, pipeline: Pipeline):
     """Run the pipeline and return the inference Response."""
-    myotube_id, nuclei_id = str(hash(myotube)), str(hash(nuclei))
+    myotube_id = hashlib.blake2b(myotube, digest_size=8).digest().hex()
+    nuclei_id = hashlib.blake2b(nuclei, digest_size=8).digest().hex()
 
     pipeline.set_myotube_image(myotube, name=myotube_id)
     pipeline.set_nuclei_image(nuclei, name=nuclei_id)
@@ -41,15 +44,14 @@ async def predict(myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=msg
         ) from e
 
-    if not myotubes:
-        await Redis.set_objects_by_id(myotube_id, myotubes)
-
-    if not nucleis:
-        await Redis.set_objects_by_id(nuclei_id, nucleis)
+    await Redis.set_objects_by_id(myotube_id, result.myotubes)
+    await Redis.set_objects_by_id(nuclei_id, result.nucleis)
 
     general_info = result.model_dump(exclude={"myotubes", "nucleis", "nuclei_clusters"})
     image_path = MyoSam.generate_fp()
-    image = pipeline.draw_contours_on_myotube_image(myotubes=myotubes, nucleis=nucleis)
+    image = pipeline.draw_contours_on_myotube_image(
+        myotubes=result.myotubes, nucleis=result.nucleis
+    )
     pipeline.save_image(path=image_path, img=image)
     return InferenceResponse(
         image_path=image_path,
@@ -59,7 +61,7 @@ async def predict(myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline):
     )
 
 
-@router.websocket("/ws/{myotubs_id}/{nucleis_id}")
+@router.websocket("/ws/{myotubes_id}/{nucleis_id}")
 async def inference(agent: InferenceAgent):
     """Analyse the inference results using the InferenceAgent."""
     while True:
@@ -69,7 +71,7 @@ async def inference(agent: InferenceAgent):
         await agent.send_data(point)
 
 
-@router.get("/{myotubs_id}/{nucleis_id}")
+@router.get("/{myotubes_id}/{nucleis_id}")
 async def get_inference_data(objects: MyotubesAndNucleisByID):
     """Get inference data given myotube and nuclei ids."""
     return InferenceDataResponse(

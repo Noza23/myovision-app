@@ -1663,7 +1663,7 @@ test = ["coverage", "pytest"]
 type = "git"
 url = "https://github.com/Noza23/myovision-sam.git"
 reference = "HEAD"
-resolved_reference = "97e8125d329fbef206871bc9fbcfde4798ca43e7"
+resolved_reference = "8e1c09748d9182a977f8736f8ce58c178d0f5ce9"
 
 [[package]]
 name = "namex"

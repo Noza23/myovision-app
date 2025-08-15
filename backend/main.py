@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -40,7 +41,7 @@ app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
 app.include_router(contours_router, prefix="/contours", tags=["contours"])
 app.include_router(inference_router, prefix="/inference", tags=["inference"])
 app.include_router(validation_router, prefix="/validation", tags=["validation"])
-app.mount(MyoSam.cache_dir, StaticFiles(directory=MyoSam.cache_dir), name="cache")
+app.mount(f"/{MyoSam.cache_dir.strip('/')}", StaticFiles(directory=MyoSam.cache_dir))
 
 
 app.add_middleware(
@@ -72,8 +73,8 @@ async def redis_status() -> HealthCheck:
     return HealthCheck(status="OK")
 
 
-@app.get("/get-config-schema/", response_model=dict[str, str])
-def get_config_chema() -> dict[str, str]:
+@app.get("/get-config-schema/", response_model=dict[str, Any])
+def get_config_chema() -> dict[str, Any]:
     """Get the configuration schema of the pipeline."""
     return Config.model_json_schema()["$defs"]
 
@@ -93,8 +94,9 @@ def _redis_connection_error_handler(request: Request, exc: Exception):
     )
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def _request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
     """Handle request validation errors."""
     logger.error(
         "Validation error occurred when processing request for %s: %s",
@@ -104,15 +106,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return await request_validation_exception_handler(request, exc)
 
 
-app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
-app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
-
-
-@app.exception_handler(UnrecognizedRoiType)
-def unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
+def _unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
     """Handle unrecognized ROI type errors."""
     logger.error("Unrecognized ROI type for request %s: %s", request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": "Unrecognized ROI type in the uploaded file."},
     )
+
+
+app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
+app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
+app.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
+app.add_exception_handler(UnrecognizedRoiType, _unrecognized_roi_type_handler)
