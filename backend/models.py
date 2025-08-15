@@ -1,121 +1,228 @@
-from typing import Union
+import json
+from collections import OrderedDict
+from enum import StrEnum
+from typing import Literal, NamedTuple, Self
 
+from myosam.inference.models.base import Myotubes, NucleiClusters, Nucleis
 from myosam.inference.predictors.config import AmgConfig
-from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing_extensions import TypeAlias
+
+
+class HealthCheck(BaseModel):
+    """Health check response model."""
+
+    status: str = "OK"
+
+
+class RootInfo(BaseModel):
+    """Root endpoint response model."""
+
+    message: str = "Rest API for MyoVision application"
+
+
+class Contour(BaseModel):
+    """Single contour in an image."""
+
+    coords: list[list[int]]
+    """Coordinates in N-dim space, where each point is represented by list(n)"""
+
+
+class ImageContours(BaseModel):
+    """Response model for all contours in an image."""
+
+    contours: list[Contour]
+    """List of all contours in an image."""
 
 
 class GeneralConfig(BaseModel):
     """General configuration for the pipeline."""
 
-    measure_unit: float = Field(
-        description="The measure unit for the image", default=1.0, ge=0.0
-    )
-    invert_image: bool = Field(
-        description="Whether to invert the image (for visualization only)",
-        default=False,
-    )
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+    measure_unit: float = Field(default=1.0, ge=0.0)
+    """Measure unit for the uploaded image."""
+    invert_image: bool = False
+    """Whether to invert the image (for visualization only)."""
 
 
 class Config(BaseModel):
     """Configuration for the pipeline."""
 
-    amg_config: AmgConfig = Field(
-        description="Config for AMG algorithm.",
-        default_factory=AmgConfig,
-        title="AMG Config",
-    )
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+    amg_config: AmgConfig = Field(default_factory=AmgConfig, title="AMG Config")
+    """Config for AMG (Auto Mask Generation algorithm)."""
     general_config: GeneralConfig = Field(
-        description="General Pipeline Config.",
-        default_factory=GeneralConfig,
-        title="General Config",
+        default_factory=GeneralConfig, title="General Config"
     )
+    """Config for general pipeline settings."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_from_json(cls, value):
+        """Validate if the input is a JSON string and parse it."""
         if isinstance(value, str):
             return cls.model_validate_json(value)
         return value
 
+    @property
+    def mu(self) -> float:
+        """Get the measure unit from the general config."""
+        return self.general_config.measure_unit
 
-class Settings(BaseSettings):
-    """App confiuration."""
-
-    redis_url: str = Field(description="Redis URL.")
-    myosam_model: str = Field(description="MyoSam model path.")
-    stardist_model: str = Field(description="StarDist model path.")
-    images_dir: str = Field(description="Images directory.")
-    backend_port: int = Field(description="Backend port.", ge=0)
-    frontend_port: int = Field(description="Frontend port.", ge=0)
-    web_concurrency: int = Field(description="Web concurrency.", ge=0)
-    device: str = Field(description="Device to use for computation.")
+    @property
+    def invert(self) -> bool:
+        """Get the invert image flag from the general config."""
+        return self.general_config.invert_image
 
 
-class State(BaseModel):
-    """Validation state."""
+# NOTE: ValidationStatus: -1: Invalid, 0: No decision, 1: Valid
+ValidationStatus: TypeAlias = Literal[-1, 0, 1]
 
-    valid: set[int] = Field(description="valid contours.", default_factory=set)
-    invalid: set[int] = Field(description="invalid contours.", default_factory=set)
-    done: bool = Field(description="validation done.", default=False)
 
-    def get_next(self) -> int:
-        """Get the next contour index."""
-        combined = self.valid | self.invalid
-        if len(combined) == 0:
-            return 0
-        return max(combined) + 1
+class State(OrderedDict[int, ValidationStatus]):
+    """State of the validation process which is an OrderedDict with specific structure.
 
-    def shift_all(self, shift: int) -> None:
-        """Shift all indices."""
-        self.valid = {i + shift for i in self.valid}
-        self.invalid = {i + shift for i in self.invalid}
+    ```
+    ValidationStatus = Literal[-1, 0, 1]
+    {id: ValidationStatus}
+    ```
+    - `ValidationStatus`: -1: Invalid, 0: No decision, 1: Valid
+    - `id`: list index for the contour in the image with matching `image_id`.
+    """
+
+    @classmethod
+    def from_dict(cls, dd: dict) -> Self:
+        """Create a State object from a dictionary."""
+        return cls({int(k): v for k, v in dd.items()})
+
+    @classmethod
+    def from_json(cls, s: str) -> Self:
+        """Load the state from a JSON string."""
+        return json.loads(s=s, object_hook=cls.from_dict)
+
+    def to_json(self) -> str:
+        """Dump the state to a JSON string."""
+        return json.dumps(self)
+
+    @property
+    def done(self) -> bool:
+        """Check if the validation is done."""
+        return all(v != 0 for v in self.values())
+
+    @property
+    def valid(self) -> list[int]:
+        """Get a list of all valid contour indices."""
+        return [i for i, v in self.items() if v == 1]
+
+    @property
+    def invalid(self) -> list[int]:
+        """Get a list of all invalid contour indices."""
+        return [i for i, v in self.items() if v == -1]
+
+    @property
+    def no_decision(self) -> list[int]:
+        """Get a list of all contour indices with no decision."""
+        return [i for i, v in self.items() if v == 0]
+
+    def undo(self, index: int) -> None:
+        """Undo the last decision for a contour."""
+        # NOTE: Reset the last decision to 'No decision'
+        self[index and (index - 1)] = 0
+
+    def mark_valid(self, index: int) -> None:
+        """Mark a contour as valid."""
+        self[index] = 1  # NOTE: Mark as valid
+
+    def mark_invalid(self, index: int) -> None:
+        """Mark a contour as invalid."""
+        self[index] = -1  # NOTE: Mark as invalid
+
+    def skip(self, index: int) -> None:
+        """Skip a contour (move it to the end of the queue)."""
+        self.move_to_end(index)
+
+    def next(self) -> int | None:
+        """Get the next contour index to validate or None if all are validated."""
+        for i, v in self.items():
+            if v == 0:
+                return i
+        return None  # NOTE: No contours left to validate
+
+    def reset(self) -> None:
+        """Reset the validation state."""
+        for k in self.keys():
+            self[k] = 0  # NOTE: Reset all decisions to 'No decision'
+
+    def add_valids(self, n: int) -> None:
+        """Add a number of valid contours at the beginning of the state."""
+        # NOTE: Create a new state with n valid contours
+        state = State(dict.fromkeys(range(n), 1))
+        # NOTE: Shift all indices by n
+        state.update(State({k + n: v for k, v in self.items()}))
+        self.clear()
+        self.update(state)
+
+    def add_no_decisions(self, n: int) -> None:
+        """Add a number of contours with no decision at the end of the state."""
+        len_ = len(self)
+        self.update(dict.fromkeys(range(len_, len_ + n), 0))
+
+
+class FileType(StrEnum):
+    """File types for the upload files."""
+
+    ROI = "ROI"
+    MYOTUBE = "MYOTUBE"
+    NUCLEI = "NUCLEI"
+    IMAGE = "IMAGE"
+
+    __EXTENSIONS__ = {
+        ROI: (".zip",),
+        MYOTUBE: (".png", ".jpeg", ".tif", ".tiff"),
+        NUCLEI: (".png", ".jpeg", ".tif", ".tiff"),
+        IMAGE: (".png", ".jpeg", ".tif", ".tiff"),
+    }
+
+    @property
+    def extensions(self):
+        """Get the allowed file extensions for the image type."""
+        return self.__EXTENSIONS__[self]
 
 
 class ValidationResponse(BaseModel):
-    """Validation response."""
+    """Response model for validation endpoint."""
 
-    image_hash: str = Field(description="The hash string of the image.")
-    image_path: str = Field(description="The path of the image.")
+    image_hash: str
+    """Image Hash, that is treated as a unique identifier across the application."""
+    image_path: str
+    """Image path in the static cache directory."""
+
+
+class InferenceDataResponse(BaseModel):
+    """Response model for fetching inference data."""
+
+    myotubes: Myotubes
+    nucleis: Nucleis
+    nuclei_clusters: NucleiClusters
 
 
 class InferenceResponse(BaseModel):
     """Inference response."""
 
-    image_path: str = Field(description="The path of the image.")
-    image_hash: Union[str, None] = Field(description="The hash string of the image.")
-    image_secondary_hash: Union[str, None] = Field(
-        description="The hash string of the secondary image."
-    )
-    general_info: dict[str, Union[str, float]] = Field(
-        description="General information about segmentation"
-    )
+    image_path: str
+    """Path to the image with contours overlayed."""
+    image_hash: str | None
+    """Image hash, that is treated as a unique identifier across the application."""
+    image_secondary_hash: str | None
+    """Secondary image hash, that is treated as a unique identifier across the application."""
+    general_info: dict[str, str | float]
+    """General information about the inference."""
 
 
-class REDIS_KEYS(BaseModel):
-    """Methods to generate key names for Redis data."""
+class Point(NamedTuple):
+    """A point in the 2D space."""
 
-    prefix: str = Field(description="The prefix for the keys.", default="myovision")
-
-    def result_key(self, hash_str: str) -> str:
-        """A key for image hash."""
-        return f"{self.prefix}:image:{hash_str}"
-
-    def image_path_key(self, hash_str: str) -> str:
-        """A key for image path."""
-        return f"{self.prefix}:image_path:{hash_str}"
-
-    def state_key(self, hash_str: str) -> str:
-        """A key for state."""
-        return f"{self.prefix}:state:{hash_str}"
-
-
-class Point(BaseModel):
-    """A point on the image"""
-
-    x: int = Field(description="x coordinate of the point", ge=0)
-    y: int = Field(description="y coordinate of the point", ge=0)
-
-    def to_tuple(self) -> tuple[int, int]:
-        """Convert to tuple."""
-        return (self.x, self.y)
+    x: int
+    y: int

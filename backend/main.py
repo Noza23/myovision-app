@@ -1,115 +1,121 @@
-import tempfile
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from myosam.inference.models.base import MyoObjects, Myotubes
-from myosam.inference.pipeline import Pipeline
-from read_roi import read_roi_zip
-from redis import asyncio as aioredis  # type: ignore
+from read_roi._read_roi import UnrecognizedRoiType
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from backend import KEYS, SETTINGS
-from backend.dependancies import set_pipeline, setup_redis
-from backend.models import Config, State
-from backend.routers import inference, validation
-from backend.utils import clean_dir
+from backend.logger import setup_logging
+from backend.models import Config, HealthCheck, RootInfo
+from backend.routers.contours import router as contours_router
+from backend.routers.inference import router as inference_router
+from backend.routers.validation import router as validation_router
+from backend.services import MyoSam, Redis
+from backend.settings import get_settings
 
-origins = ["*"]
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan of application."""
-    pipeline = set_pipeline(Pipeline())
-    # print("> Loading Stardist model...")
-    pipeline._stardist_predictor.set_model(SETTINGS.stardist_model)
-    # print("> Loading Myosam model...")
-    pipeline._myosam_predictor.set_model(SETTINGS.myosam_model, SETTINGS.device)
+    setup_logging(get_settings().log_level)
+    MyoSam.setup()
+
     yield
-    # print("> Cleaning images directory...")
-    clean_dir(SETTINGS.images_dir)
-    # print("> Done.")
+
+    MyoSam.cleanup()
+    await Redis.close()
+    await asyncio.sleep(0)  # Graceful shutdown
 
 
 app = FastAPI(lifespan=lifespan, title="MyoVision API", version="0.1.0")
-app.include_router(router=inference.router)
-app.include_router(validation.router)
-app.mount("/images", StaticFiles(directory=SETTINGS.images_dir), name="images")
+app.include_router(contours_router, prefix="/contours", tags=["contours"])
+app.include_router(inference_router, prefix="/inference", tags=["inference"])
+app.include_router(validation_router, prefix="/validation", tags=["validation"])
+app.mount(f"/{MyoSam.cache_dir.strip('/')}", StaticFiles(directory=MyoSam.cache_dir))
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/")
-async def root() -> dict[str, str]:
+@app.get("/", status_code=status.HTTP_200_OK, response_model=RootInfo)
+def get_root() -> RootInfo:
     """Root endpoint."""
-    return {"message": "App developed for the MyoVision project 🚀"}
+    return RootInfo()
 
 
-@app.get("/redis_status/", dependencies=[Depends(setup_redis)])
-async def redis_status() -> dict[str, bool]:
-    """check status of the redis connection"""
-    return {"status": True}
+@app.post("/health", status_code=status.HTTP_200_OK, response_model=HealthCheck)
+@app.get("/health", status_code=status.HTTP_200_OK, response_model=HealthCheck)
+def get_health() -> HealthCheck:
+    """Check the health of the application."""
+    return HealthCheck(status="OK")
 
 
-@app.get("/get_config_schema/")
-async def get_config_schema() -> dict[str, Any]:
-    """Get the configuration of the pipeline."""
-    return Config(measure_unit=1.0).model_json_schema()["$defs"]
+@app.get("/check-redis", status_code=status.HTTP_200_OK, response_model=HealthCheck)
+async def redis_status() -> HealthCheck:
+    """Check status of the redis conncetion."""
+    await Redis.ping()
+    return HealthCheck(status="OK")
 
 
-@app.get("/get_contours/{hash_str}")
-async def get_contours(
-    hash_str: str, redis: aioredis.Redis = Depends(setup_redis)
-) -> dict[str, list[list[list[int]]]]:
-    """Get the contours for specific image."""
-    objs = await redis.get(KEYS.result_key(hash_str))
-    if not objs:
-        raise HTTPException(404, "⚠️ Contours not found.")
-    objs = MyoObjects.model_validate_json(objs)
-    return {"roi_coords": [x.roi_coords for x in objs]}
+@app.get("/get-config-schema/", response_model=dict[str, Any])
+def get_config_chema() -> dict[str, Any]:
+    """Get the configuration schema of the pipeline."""
+    return Config.model_json_schema()["$defs"]
 
 
-@app.post("/upload_contours/{hash_str}/")
-async def upload_contours(
-    hash_str: str,
-    redis: aioredis.Redis = Depends(setup_redis),
-    file: UploadFile = File(...),
-) -> dict[str, list[list[list[int]]]]:
-    """Upload the contours of the image."""
-    with tempfile.NamedTemporaryFile() as f:
-        open(f.name, "wb").write(await file.read())
-        try:
-            rois_myotubes = read_roi_zip(f.name)
-        except Exception:
-            raise HTTPException(400, "⚠️ Invalid file format.")
-        finally:
-            f.close()
+def _redis_connection_error_handler(request: Request, exc: Exception):
+    """Handle Redis connection errors."""
+    logger.error(
+        "Redis Error occurred when processing request for %s: %s",
+        request.url.path,
+        exc,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "Service is temporarily unavailable. Please try again later."
+        },
+    )
 
-    coords_lst = [
-        [[x, y] for x, y in zip(roi["x"], roi["y"])] for _, roi in rois_myotubes.items()
-    ]
 
-    if not coords_lst:
-        raise HTTPException(500, detail="⚠️ Failed to read ROIs.")
-    objs_json = await redis.get(KEYS.result_key(hash_str))
-    state = State.model_validate_json(await redis.get(KEYS.state_key(hash_str)))
-    if not objs_json:
-        objects = Myotubes()
-    else:
-        objects = Myotubes.model_validate_json(objs_json)
-    objects.add_instances_from_coords(coords_lst)
-    # Shift all indices and update valid set
-    state.shift_all(len(coords_lst))
-    state.valid.update(range(len(coords_lst)))
+async def _request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    """Handle request validation errors."""
+    logger.error(
+        "Validation error occurred when processing request for %s: %s",
+        request.url.path,
+        exc,
+    )
+    return await request_validation_exception_handler(request, exc)
 
-    await redis.set(KEYS.result_key(hash_str), objects.model_dump_json())
-    await redis.set(KEYS.state_key(hash_str), state.model_dump_json())
-    return {"batched_coords": coords_lst}
+
+def _unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
+    """Handle unrecognized ROI type errors."""
+    logger.error("Unrecognized ROI type for request %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "Unrecognized ROI type in the uploaded file."},
+    )
+
+
+app.add_exception_handler(RedisConnectionError, _redis_connection_error_handler)
+app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
+app.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
+app.add_exception_handler(UnrecognizedRoiType, _unrecognized_roi_type_handler)
