@@ -89,8 +89,9 @@ class WebSocketAgent:
             code = status.WS_1011_INTERNAL_ERROR
 
         self.log_action(Action.DISCONNECTING, message=f"{code} - {exc_value}")
-        # NOTE: In case of WebSocketDisconnect, starlette will handle closing the connection.
-        if exc_type is not WebSocketDisconnect:
+        # NOTE: In case of WebSocketDisconnect | WebSocketException, starlette handles
+        # closing the connection.
+        if not isinstance(exc_value, (WebSocketDisconnect, WebSocketException)):
             await self.websocket.close(code=code)
         self.log_action(Action.DISCONNECTED)
 
@@ -164,19 +165,23 @@ class ValidationAgent(WebSocketAgent):
         try:
             data = self.get_data_to_send()
             await self.websocket.send_json(data=data, mode="text")
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected while sending contour.")
+            raise
         except Exception as e:
             self.log_action(
                 Action.UNEXPECTED_ERROR, message=f"Sending coordinates has failed: {e}"
             )
             raise e
-        # NOTE: Update the current id after successfully sending the data
-        self._current_id = self.state.next()
 
     async def receive_decision(self):
         """Receive the client's signal on the contour sent."""
         self.log_action(Action.WAITING, message=self.current_id)
         try:
             digit = await self.websocket.receive_json()
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected while waiting for decision.")
+            raise
         except Exception as e:
             self.log_action(
                 Action.UNEXPECTED_ERROR, message=f"Receiving signal has failed: {e}"
@@ -194,6 +199,8 @@ class ValidationAgent(WebSocketAgent):
         signal = ValidationSignal(digit)
         self.log_action(Action.ACTING, message=signal.name)
         await self.act_on_decision(signal)
+        # NOTE: Update the current id after successfully validating the decision
+        self._current_id = self.state.next()
 
     async def act_on_decision(self, signal: ValidationSignal):
         """Act on the signal received from the client."""
@@ -242,6 +249,9 @@ class InferenceAgent(WebSocketAgent):
         try:
             self.log_action(Action.WAITING)
             data = await self.websocket.receive_json()
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected while waiting for point.")
+            raise
         except Exception as e:
             self.log_action(
                 Action.UNEXPECTED_ERROR, message=f"Receiving Point has failed: {e}"
@@ -284,6 +294,8 @@ class InferenceAgent(WebSocketAgent):
         self.log_action(Action.SENDING, message=point)
         try:
             await self.websocket.send_json(data=data, mode="text")
+        except WebSocketDisconnect:
+            raise
         except Exception as e:
             self.log_action(
                 Action.UNEXPECTED_ERROR, message=f"Sending data has failed: {e}"

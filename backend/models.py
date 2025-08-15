@@ -128,7 +128,8 @@ class State(OrderedDict[int, ValidationStatus]):
 
     def undo(self, index: int) -> None:
         """Undo the last decision for a contour."""
-        self[index] = 0  # NOTE: Reset the decision to 'No decision'
+        # NOTE: Reset the last decision to 'No decision'
+        self[index and (index - 1)] = 0
 
     def mark_valid(self, index: int) -> None:
         """Mark a contour as valid."""

@@ -86,7 +86,7 @@ class MyoRedis(_Redis):
         """Get multiple values by keys and deserialize them to the given model."""
         logger.info(
             "[MGET] %s",
-            ", ".join(f"{v.__name__} for key: {k}" for k, v in mapping.items()),
+            "; ".join(f"{v.__name__}: {k}" for k, v in mapping.items()),
         )
         result = dict.fromkeys(mapping.keys(), None)
         # NOTE: MGET returns the values in same order as keys provided
@@ -176,7 +176,8 @@ class MyoSamManager:
 
     def cleanup(self):
         """Clean up resources."""
-        self.pipeline.clear_cache()
+        self.pipeline.nuclei_image = None
+        self.pipeline.myotube_image = None
         self.pipeline._stardist_predictor.model = None
         self.pipeline._myosam_predictor.model = None
         self._cleanup_cache()
