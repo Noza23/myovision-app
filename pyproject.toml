@@ -1,7 +1,7 @@
 [tool.poetry]
 package-mode = false
 name = "myovision-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "A RESTful API for myovision project"
 authors = ["Noza23 <g.nozadze2311@gmail.com>"]
 license = "MIT"
@@ -12,6 +12,7 @@ python = ">=3.12"
 fastapi = {extras = ["standard"], version = "^0.115.12"}
 redis = {extras = ["hiredis"], version = "^5.2.1"}
 read-roi = "^1.6.0"
+numpy = "<2.0"
 pydantic-settings = "^2.9.1"
 myosam = {git = "https://github.com/Noza23/myovision-sam.git", extras = ["inference", "stardist"]}
 
@@ -24,8 +25,28 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 88
-indent-width = 4
 
 [tool.ruff.lint]
+select = [
+    "I", # Sort Imports
+    "D", # Docstrings
+    "A", # flake8-builtins
+    "T20", # flake8-print
+    "C4", # flake8-comprehensions
+    "B", # flake8-bugbear
+    "S", # flake8-bandit
+    "BLE", #flake8-blind-except
+    "LOG", # flake8-logging-format
+    "G", # flake8-logging-format
+]
 fixable = ["I"]
-extend-select = ["I", "T"]
+ignore = ["D100", "D104"]
+pydocstyle = { convention = "google" }
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [ "D", "B", "S", "C4" ]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

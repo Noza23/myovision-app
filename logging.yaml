@@ -1,0 +1,39 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  detailed:
+    format: '%(asctime)s - %(name)s - %(levelname)s - <PID %(process)d:%(processName)s> - <Thread %(thread)d:%(threadName)s> - %(message)s'
+
+
+handlers:
+  console-standard:
+      class: logging.StreamHandler
+      level: DEBUG # Default Level, can be overridden from environment
+      formatter: standard
+      stream: ext://sys.stdout
+
+  console-detailed:
+      class: logging.StreamHandler
+      level: DEBUG # Default Level, can be overridden from environment
+      formatter: detailed
+      stream: ext://sys.stdout
+
+
+loggers:
+  backend:
+    level: DEBUG
+    handlers: [console-standard]
+    propagate: no
+
+  myosam:
+    level: DEBUG
+    handlers: [console-standard]
+    propagate: no
+
+  redis:
+    level: WARNING
+    handlers: [console-detailed]
+    propagate: no
