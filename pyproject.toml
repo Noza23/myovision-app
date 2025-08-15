@@ -35,6 +35,8 @@ select = [
     "B", # flake8-bugbear
     "S", # flake8-bandit
     "BLE", #flake8-blind-except
+    "LOG", # flake8-logging-format
+    "G", # flake8-logging-format
 ]
 fixable = ["I"]
 ignore = ["D100", "D104"]

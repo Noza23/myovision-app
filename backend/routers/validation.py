@@ -51,7 +51,7 @@ async def predict(config: Config, image: ImageFile, pipeline: Pipeline):
             # NOTE: All new myotubes are recorded in the state with status "no decision"
             state.add_no_decisions(len(myotubes))
         except Exception as e:
-            logger.error(f"Unexpected error during pipeline execution: {e}")
+            logger.error("Unexpected error during pipeline execution: %s", e)
             logger.debug(e, exc_info=True)
             msg = f"Pipeline failed for image {image_id}"
             raise HTTPException(

@@ -23,8 +23,9 @@ def setup_logging(level: str = "INFO") -> bool:
     logging.config.dictConfig(config=config)
     logger = logging.getLogger(__name__)
     logger.log(
-        level=getattr(logging, level.upper()),
-        msg=f"Logging configured with level: {level}",
+        getattr(logging, level.upper()),
+        "Logging configured with level: %s",
+        level,
     )
     _logger_setup = True
     return _logger_setup

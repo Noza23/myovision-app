@@ -106,7 +106,7 @@ StateByID = Annotated[State, Depends(get_validation_state_by_id)]
 
 async def recieve_file(file: UploadFile, extensions: tuple[str]) -> bytes:
     """Receive a file and validate its extension."""
-    logger.info(f"Received File: {file.filename}")
+    logger.info("Received file %s", file.filename)
     if not file.filename.lower().endswith(extensions):
         msg = f"Invalid file extension. Allowed extensions: {', '.join(extensions)}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)

@@ -34,7 +34,7 @@ async def predict(myotube: ImageFile, nuclei: ImageFile, pipeline: Pipeline):
             await run_in_threadpool(pipeline.execute, myotubes, nucleis)
         ).information_metrics
     except Exception as e:
-        logger.error(f"Unexpected error occured during pipeline execution: {e}")
+        logger.error("Unexpected error occurred during pipeline execution: %s", e)
         logger.debug(e, exc_info=True)
         msg = f"Pipeline failed for images {myotube_id} and {nuclei_id}"
         raise HTTPException(

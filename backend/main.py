@@ -80,8 +80,11 @@ def get_config_chema() -> dict[str, str]:
 
 def _redis_connection_error_handler(request: Request, exc: Exception):
     """Handle Redis connection errors."""
-    logger.info(f"Redis Error occured when processing request for {request.url.path}")
-    logger.error(exc, exc_info=True)
+    logger.error(
+        "Redis Error occurred when processing request for %s: %s",
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
@@ -93,8 +96,11 @@ def _redis_connection_error_handler(request: Request, exc: Exception):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle request validation errors."""
-    logger.error(f"Validation error for request {request.url.path}")
-    logger.debug(exc, exc_info=True)
+    logger.error(
+        "Validation error occurred when processing request for %s: %s",
+        request.url.path,
+        exc,
+    )
     return await request_validation_exception_handler(request, exc)
 
 
@@ -105,8 +111,7 @@ app.add_exception_handler(RedisTimeoutError, _redis_connection_error_handler)
 @app.exception_handler(UnrecognizedRoiType)
 def unrecognized_roi_type_handler(request: Request, exc: UnrecognizedRoiType):
     """Handle unrecognized ROI type errors."""
-    logger.error(f"Unrecognized ROI type for request {request.url.path}")
-    logger.debug(exc, exc_info=True)
+    logger.error("Unrecognized ROI type for request %s: %s", request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": "Unrecognized ROI type in the uploaded file."},

@@ -57,15 +57,15 @@ class MyoRedis(_Redis):
 
     async def get_by_key(self, key: str, model: type[T]) -> T | None:
         """Get value by key and deserialize it to the given model."""
-        logger.info(f"[GET] {model.__name__} for key: {key}")
+        logger.info("[GET] %s for key: %s", model.__name__, key)
         if not (value := await self.get(key)):
-            logger.info(f"[NOT_FOUND] {model.__name__} for key: {key}")
+            logger.info("[NOT_FOUND] %s for key: %s", model.__name__, key)
             return None
         return self._deserialize_value(value, model)
 
     async def set_by_key(self, key: str, value: Value) -> bool | None:
         """Set value by key (serializing it if needed)."""
-        logger.info(f"[SET] {type(value).__name__} for key: {key}")
+        logger.info("[SET] %s for key: %s", type(value).__name__, key)
         return await self.set(key, value=self._serialize_value(value))
 
     async def mset_by_key(self, mapping: dict[str, Value]) -> bool | None:
@@ -74,7 +74,7 @@ class MyoRedis(_Redis):
             {
                 k: (
                     logger.info(  # type: ignore[func-returns-value]
-                        f"[MSET] {type(v).__name__} for key: {k}"
+                        "[MSET] %s for key: %s", type(v).__name__, k
                     )
                     or self._serialize_value(v)
                 )
@@ -85,7 +85,8 @@ class MyoRedis(_Redis):
     async def mget_by_key(self, mapping: dict[str, type[T]]) -> dict[str, T | None]:
         """Get multiple values by keys and deserialize them to the given model."""
         logger.info(
-            f"[MGET] {', '.join(f'{v.__name__} for key: {k}' for k, v in mapping.items())}"
+            "[MGET] %s",
+            ", ".join(f"{v.__name__} for key: {k}" for k, v in mapping.items()),
         )
         result = dict.fromkeys(mapping.keys(), None)
         # NOTE: MGET returns the values in same order as keys provided
@@ -94,7 +95,7 @@ class MyoRedis(_Redis):
             if obj_raw is not None:
                 result[id_] = self._deserialize_value(obj_raw, mapping[id_])
             else:
-                logger.info(f"[NOT_FOUND] {mapping[id_].__name__} for key: {id_}")
+                logger.info("[NOT_FOUND] %s for key: %s", mapping[id_].__name__, id_)
         return result
 
     async def get_state_by_id(self, image_id: str) -> State | None:
@@ -187,10 +188,10 @@ class MyoSamManager:
 
     def _cleanup_cache(self) -> None:
         """Cleanup all files in the specified directory."""
-        logger.info(f"Cleaning up cache directory: {self.cache_path}")
+        logger.info("Cleaning up cache directory: %s", self.cache_path)
         for f in self.cache_path.glob("*"):
-            if f.is_file():
-                logger.info(f"Removing file: {f}")
+            if f.is_file() and f.name != "info.txt":
+                logger.info("Removing file: %s", f)
                 f.unlink()
 
     def get_pipeline(self, config: Config) -> Pipeline:

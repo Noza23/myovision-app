@@ -83,11 +83,9 @@ class WebSocketAgent:
         if exc_value is None:
             code = status.WS_1000_NORMAL_CLOSURE
         elif isinstance(exc_value, (WebSocketException, WebSocketDisconnect)):
-            logger.debug(exc_value, exc_info=True)
             code = exc_value.code
         else:
             self.log_action(Action.UNEXPECTED_ERROR, exc_value)
-            logger.error(exc_value, exc_info=True)
             code = status.WS_1011_INTERNAL_ERROR
 
         self.log_action(Action.DISCONNECTING, message=f"{code} - {exc_value}")

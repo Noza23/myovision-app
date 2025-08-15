@@ -30,7 +30,7 @@ async def upload_contours(
 ):
     """Upload contours from a ROI zip file exported from ImageJ."""
     if not (coords := await load_coords_from_zip(file)):
-        logger.warning(f"Empty contours uploaded for image ID {image_id}.")
+        logger.warning("Empty contours uploaded for image ID %s", image_id)
         return ImageContours(contours=[])
     objects.add_instances_from_coords(coords)
     # NOTE: Update the state: we assume all uploaded contours are valid.
@@ -47,7 +47,7 @@ async def load_coords_from_zip(file: bytes) -> list[list[list[int]]]:
         try:
             rois = read_roi_zip(zip_path=f.name)
         except Exception as e:
-            logger.error(f"Failed to read ROIs from file: {e}")
+            logger.error("Failed to read ROIs from file: %s", e)
             logger.debug(e, exc_info=True)
             raise e
     return [[[x, y] for x, y in zip(roi["x"], roi["y"])] for _, roi in rois.items()]
